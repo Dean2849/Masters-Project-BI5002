@@ -1,0 +1,962 @@
+---
+title: "Main Project Data Analysis"
+author: "Dean Wilkinson"
+date: "20/01/2022"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,tidy.opts=list(width.cutoff=30),tidy=TRUE)
+```
+
+## Introduction
+
+In this RMarkdown document I will be doing the analysis of the "Full Rabbit Dataset.csv" constituting the main focus of the project. This data set contains point occurrence counts of invasive European rabbits (*Oryctolagus cuniculus*) in Australia. These point counts were collated from various direct and indirect studies as well as citizen science observations during the time frame 1760 to 2015 and form part of the long term rabbit data set (*Roy-Dufresne et al 2019*). The data set also contained a suit of environmental variables as well as the presence-absence data from the "Species Pseudoabsence Generation.Rmd" document. Finally, various abundance estimates were derived from the data provided by the data base and from the "Estimating Rabbit Abundance.Rmd" document. 
+
+Variable names:
+
+ - **Occurrence.ID**: unique data identifier, numeric
+ - **Lat**: decimal latitude, numeric
+ - **Long**: decimal longitude, numeric
+ - **Occurrences**: number of rabbit occurrences for a given sampling unit, integer
+ - **Abund1**: estimated rabbit abundance from "Estimating Rabbit Abundance.Rmd", numeric
+ - **Abund2**: estimated rabbit abundance from the "S12_DataAbundance" file in "European Rabbit Dataset.zip", numeric
+ - **Abund3**: estimated rabbit abundance derived from **Occurrences** and **No.of.10km.cells**, numeric
+ - **Year**: year the observations were recorded, integer/numeric
+ - **Day**: day of the year the observations were recorded, integer/numeric
+ - **A_Prec_Avg30Yr**: 30 year average of average precipitation, numeric 
+ - **A_Psea_Avg30Yr**: 30 year average of average precipitation seasonality, numeric 
+ - **A_TAvg_Avg30Yr**: 30 year average of average temperature, numeric
+ - **A_TMax_Avg30Yr**: 30 year average of average maximum temperature, numeric
+ - **A_TMin_Avg30Yr**: 30 year average of average minimum temperature, numeric
+ - **A_TSea_Avg30Yr**: 30 year average of average temperature seasonality, numeric
+ - **A_TWet_Avg30Yr**: 30 year average of average temperature in the wettest quarter of the year, numeric
+ - **A_TWrm_Avg30Yr**: 30 year average of average temperature in the warmest quarter of the year, numeric
+ - **A_Prec_AvgAutumn30Yr**: 30 year average of average precipitation in Autumn, numeric
+ - **A_Prec_AvgSummer30Yr**: 30 year average of average precipitation in Summer, numeric
+ - **A_Prec_AvgSpring30Yr**: 30 year average of average precipitation in Spring, numeric
+ - **A_Prec_AvgWinter30Yr**: 30 year average of average precipitation in Winter, numeric
+ - **DistPermWater**: euclidean distance in metres to the nearest permanent water feature, numeric
+ - **DistAgriLand**: euclidean distance in metres to the nearest agricultural land margins, numeric
+ - **PercSoilClay**: the percentage of estimated clay in the soil, numeric
+ - **MinDayLength**: minimum day length in hours, numeric 
+ - **VarDayLength**: variation in day length in hours, numeric
+ - **VegeType**: vegetation type, factor with 13 levels
+ - **Season**: meterological season according to the Australian calendar, factor with 4 levels
+ - **Month**: month of the year, factor with 12 levels
+ - **Diseases**: the number of introduced diseases as biological control for rabbits in a given year, factor with 4 levels
+ - **Red.Fox**: presence/absence of red foxes, factor with 2 levels
+ - **Dingo**: presence/absence of dingoes , factor with 2 levels
+ - **Feral.Cat**: presence/absence of feral cats, factor with 2 levels 
+ - **Whistling.Kite**: presence/absence of whistling kites, factor with 2 levels
+ - **Wallaby.Sp** :presence/absence of a wallaby species, factor with 2 levels
+
+The 13 vegetation types were a re-classification of all the vegetation types in Australia as described by the Environment Department of the Australian Government classification scheme and the original classes can be found at "https://www.awe.gov.au/agriculture-land/land/native-vegetation/national-vegetation-information-system/data-products". The re-classifications used in the data set are found below:
+
+ - 1 = Rainforest and vine thickets
+ - 2 = Eucalyptus forest
+ - 3 = Eucalyptus woodland
+ - 4 = Woodlands
+ - 5 = Seasonal inundated swamps, salt marches and mangroves
+ - 6 = Low closed forests and tall closed shrublands
+ - 7 = Shrublands
+ - 8 = Tussock grasslands
+ - 9 = Hummock grasslands
+ - 10 = Saltbushes
+ - 11 = Cleared vegetation, naturally bare
+ - 12 = Water
+ - 13 = Unclassified/Unknown/Other
+ 
+The factor levels in **Disease** are coded 0-3 with what each number corresponds to below:
+
+ - 0 = no diseases introduced as biological control
+ - 1 = only myxomatosis is the introduced disease
+ - 2 = myxomatosis and rabbit hemorrhagic disease virus 1 (RHDV1) are the only introduced diseases
+ - 3 = myxomatosis, RHDV1 and RHDV2 are the only introduced diseases
+ 
+As **Season** is coded according to the Australian calender the numeric coding of 1-4 represents different seasons than would be the case for a Northern hemisphere nation:
+
+ - 1 = Summer
+ - 2 = Autumn
+ - 3 = Winter
+ - 4 = Spring
+ 
+The state variable refers to the 8 states/territories of Australia coded with their 2/3-letter coding with the full names of each state/territory given below:
+
+ - ACT = Australian Capital Territory
+ - NSW = New South Wales
+ - NT = Northern Territory
+ - QLD = Queensland
+ - SA = South Australia
+ - TAS = Tasmania
+ - VIC = Victoria
+ - Western Australia
+ 
+Finally, in all the animal presence/absence factors 1 represents presences and 0 represents absences.
+
+The aim of the project is to determine the drivers of rabbit occurrence patterns, given the variables in the data set, at different spatial scales and compare the variables that are in each final model. The scales will be on the country scale, state/territory scale and transect scale. The transect scale will consist of random transects sampled from the data on a North-South axis and a East-West axis. 
+
+## R Environment Set Up and Importing the Data
+
+I will start by loading the R packages that I will be using for this analysis.
+```{r, loading required packages}
+library(mgcv)
+library(ggplot2)
+library(ggcleveland)
+library(GGally)
+library(patchwork)
+library(tidyverse)
+library(effects)
+library(AICcmodavg)
+library(emmeans)
+library(car)
+```
+
+There are also some custom functions that I want to create that will be helpful for graphical data analysis and plotting with **ggplot2**
+```{r, custom functions}
+#Augmented pairs plot
+panel.hist = function(x, ...) {
+  usr = par("usr"); on.exit(par(usr))
+  par(usr = c(usr[1:2], 0, 2.5))
+  hist(x, freq = FALSE, col="cyan", add=TRUE) 
+  lines(density(x))
+}
+panel.cor = function(x, y, digits = 2, prefix = "", cex.cor, ...){
+  usr = par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r = abs(cor(x, y))
+  txt = format(c(r, 0.123456789), digits = digits)[1]
+  txt = paste0(prefix, txt)
+  if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+pairs2 = function (x) {
+  pairs(x, lower.panel = panel.smooth, upper.panel = panel.cor, diag.panel = panel.hist)
+}
+
+#Co-plot panel function
+coplot.ablines = function(x, y, ...){
+  tmp = lm(y ~ x, na.action = na.omit)
+  abline(tmp)
+  points(x, y)
+}
+
+#Custom ggplot theme
+theme_customized = function(base_size = 13, base_family = "", base_line_size = base_size/22, base_rect_size = base_size/22){
+  theme(
+    axis.title = element_text(size = 13),
+    axis.text.x = element_text(size = 10),
+    axis.text.y = element_text(size = 10),
+    plot.caption = element_text(size = 10, face = "italic"),
+    panel.background = element_rect(fill = "white"),
+    axis.line = element_line(size = 1, colour = "black"),
+    strip.background = element_rect(fill = "#cddcdd"),
+    panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+    strip.text = element_text(colour = "black"),
+    legend.key = element_blank()
+  )
+}
+```
+
+I would also like to note that the custom R functions above were provided to me during statistics courses run by Dr Alex Douglas and Dr Thomas Cornulier at the University of Aberdeen. 
+
+Now lets finally import the data
+```{r, importing the Data set}
+Rabbit = read.table("E:/Masters Project/BI5002 (Masters Project)/Invasive European Rabbit Data/Full Rabbit Dataset.csv", 
+                    header = TRUE, stringsAsFactors = TRUE, sep = ",")
+str(Rabbit)
+head(Rabbit, n = 10)
+tail(Rabbit, n = 10)
+```
+
+The factors have not been coded as factors, as such I will need to factorise them but everything else looks okay with the data frame.
+```{r, factorising factors}
+#Factorise the factor
+Rabbit$VegeType = factor(Rabbit$VegeType)
+Rabbit$Season = factor(Rabbit$Season)
+Rabbit$Month = factor(Rabbit$Month, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"))
+Rabbit$Diseases = factor(Rabbit$Diseases)
+Rabbit$Red.Fox = factor(Rabbit$Red.Fox)
+Rabbit$Dingo = factor(Rabbit$Dingo)
+Rabbit$Feral.Cat = factor(Rabbit$Feral.Cat)
+Rabbit$Whistling.Kite = factor(Rabbit$Whistling.Kite)
+Rabbit$Wallaby.Sp = factor(Rabbit$Wallaby.Sp)
+
+#Re-check the data set
+str(Rabbit)
+summary(Rabbit)
+```
+
+In order to look at the drivers of rabbit occurrences at different scales I need to sub set the data to make new data frames based on these scales. First I will create a subset data frame for each Australian state/territory. I will then name each data frame "Rabbit_state/territory"
+```{r, state level datasets}
+Rabbit_ACT = Rabbit[Rabbit$State == "ACT", ]
+Rabbit_NSW = Rabbit[Rabbit$State == "NSW", ]
+Rabbit_NT = Rabbit[Rabbit$State == "NT", ]
+Rabbit_QLD = Rabbit[Rabbit$State == "QLD", ]
+Rabbit_SA = Rabbit[Rabbit$State == "SA", ]
+Rabbit_TAS = Rabbit[Rabbit$State == "TAS", ]
+Rabbit_VIC = Rabbit[Rabbit$State == "VIC", ]
+Rabbit_WA = Rabbit[Rabbit$State == "WA", ]
+```
+
+A point of note to myself, the Tasmania data set only has 365 observations whilst the other 7 data sets have thousands of observations. This may limit the number of parameters that can be potentially fitted to statistical models for the Tasmania given the number of potential predictors, whereas there should not be any such limitations for the other state/ territory specific data sets. 
+
+Creating the transect-scale data sets will be more tricky. To create the North-South transects I need to randomly sample longitudes given a fixed latitude and to create the East-West transects I need to randomly sample latitudes given a fixed longitude. To create transects of equal sizes the fixed longitudes and fixed latitudes can be within a range that corresponds to a set physical distance measured in metres. 
+
+First, some starting longitudes and latitudes to make the transects from.
+```{r, starting longs and lats}
+#Most Northern and Southern Points
+Long_max = max(Rabbit$Long, na.rm = TRUE)
+Long_min = min(Rabbit$Long, na.rm = TRUE)
+Long_max
+Long_min
+
+#Most Eastern and Western Points
+Lat_min = min(Rabbit$Lat, na.rm = TRUE)
+Lat_max = max(Rabbit$Lat, na.rm = TRUE)
+Lat_min
+Lat_max
+```
+
+As there is only a difference of approximately 40 units between **Long_max** and **Long_min** I will make 8 North-South transects with a difference in longitude of  approximately 5 units. As for latitude there is only a difference of approximately 32 units between **Lat_max** and **Lat_min**, as such I will make 6 East-West transects with a difference in latitude of approximately 5 units. 
+
+Now we can make the transect-level data sets.
+```{r, transect level data sets}
+#North-South Transects
+NS1 = Rabbit[Rabbit$Long == 153.65, ]
+NS2 = Rabbit[Rabbit$Long == 153.65 - 5.00, ]
+NS3 = Rabbit[Rabbit$Long == 153.65 - 10.00, ]
+NS4 = Rabbit[Rabbit$Long == 153.65 - 15.00, ]
+NS5 = Rabbit[Rabbit$Long == 153.65 - 20.00, ]
+NS6 = Rabbit[Rabbit$Long == 153.65 - 25.00, ]
+NS7 = Rabbit[Rabbit$Long == 153.65 - 30.00, ]
+NS8 = Rabbit[Rabbit$Long == 153.65 - 35.00, ]
+NS9 = Rabbit[Rabbit$Long == 113.05, ]
+
+NS = rbind(NS1, NS2, NS3, NS4, NS5, NS6, NS7, NS8, NS9)
+NS = as.data.frame(NS)
+
+#East-West Transects
+EW1 = Rabbit[Rabbit$Lat == -12.35, ]
+EW2 = Rabbit[Rabbit$Lat == -12.35 - 5.00, ]
+EW3 = Rabbit[Rabbit$Lat == -12.35 - 10.00, ]
+EW4 = Rabbit[Rabbit$Lat == -12.35 - 15.00, ]
+EW5 = Rabbit[Rabbit$Lat == -12.35 - 20.00, ]
+EW6 = Rabbit[Rabbit$Lat == -12.35 - 25.00, ]
+EW7 = Rabbit[Rabbit$Lat == -43.49, ]
+
+EW = rbind(EW1, EW2, EW3, EW4, EW5, EW6, EW7)
+EW = as.data.frame(EW)
+```
+
+The transects created about have variable sample sizes with **EW7** only having one observation, regardless we now need to add a **Transect** variable to **NS** and **EW**. Then I will check the data and remove the individual transect data sets to save memory.
+
+```{r, adding Transect Variables}
+#Add Transect Variables
+x = factor(rep(c("a", "b", "c", "d", "e", "f", "g", "h", "i"), 
+               times = c(4, 272, 235, 1511, 282, 12, 7, 28, 2)))
+y = factor(rep(c("a", "b", "c", "d", "e", "f", "g"), 
+               times = c(2, 17, 34, 97, 277, 6322, 1)))
+NS$Transect = x
+EW$Transect = y
+str(NS)
+str(EW)
+
+#Check the Data
+summary(NS)
+summary(EW)
+
+#Remove the transect specific data sets
+rm(EW1, EW2, EW3, EW4, EW5, EW6, EW7)
+rm(NS1, NS2, NS3, NS4, NS5, NS6, NS7, NS8, NS9)
+```
+
+This concludes the "R Environment Set Up and Importing the Data section". Next, we move on to "Initial Graphical Data Exploration and Research Questions". 
+
+## Initial Graphical Data Exploration and Research Questions
+
+In this section I will be making scatter plots, box plots and co-plots of the predictor variables in the various data frames to get a sense of which predictors may vary with **Occurrences**. As I will be making a lot of plots of the same type I will create plotting functions to use in for loops that will speed up the creation of the plots.
+```{r, plotting functions}
+scatterplot_fun = function(data, x, y, na.rm = TRUE){
+  ggplot(data = data, aes(x = .data[[x]], y = .data[[y]])) + 
+    geom_point() + 
+    geom_smooth(method = "loess", se = FALSE, colour = "red") + 
+    theme_classic()
+}
+
+boxplot_fun = function(data, x, y, na.rm = TRUE){
+  ggplot(data = data, aes(x = .data[[x]], y = .data[[y]])) + 
+    geom_boxplot() + 
+    theme_classic()
+}
+boxplot_fun2 = function(data, x, y, z, na.rm = TRUE){
+   ggplot(data = data, aes(x = .data[[x]]*.data[[z]], y = .data[[y]])) + 
+    geom_boxplot() + 
+    theme_classic()
+}
+coplot_fun = function(data, x, y, z, na.rm = TRUE){
+  gg_coplot(data = data, x = .data[[x]], y = .data[[y]], faceting = .data[[z]], loess_family = "symmetric", size = 2) + 
+    theme_classic()
+}
+```
+
+I will start with the Australia scale data set **Rabbit**, where I will plot **Occurences** against **Year** and all the variables that come after this in numerical order. 
+```{r, Rabbit Initial GDE Scatter Plots, warning=FALSE}
+par(mfrow = c(2,3))
+for(i in Rabbit[, 9:26]){
+  print(ggplot(Rabbit, aes(x = i, y = Occurences)) +
+          geom_point()) + theme_classic()
+  Sys.sleep(1)
+}
+```
+
+The data are very bunched together when plotted against occurrence, I will log-transform **Occurences** and re-plot the graphs. 
+```{r, Rabbit Initial GDE Scatter Plots 2, warning=FALSE}
+par(mfrow = c(2,3))
+for(i in Rabbit[, 9:27]){
+  print(ggplot(Rabbit, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+```
+
+The plots produced suggest that year, the precipitation variables and distanced to the edge of the nearest agricultural land may have country wide effects on rabbit occurrences with the other plots suggesting no likely relationships. Next, I will plot boxplots of log(Occurences) against the factor variables. 
+```{r, Rabbit Initial GDE Box Plots, warning=FALSE}
+par(mfrow = c(2,3))
+for(i in Rabbit[, 28:37]){
+  boxplot(log(Occurences) ~ i, data = Rabbit)
+  Sys.sleep(1)
+}
+```
+
+The boxplots suggest there is likely a difference in the number of rabbit occurrences according to **State**, **Vegetype**, **Season** and **Month**. The other variables also likely have differences in rabbit occurences but I am sceptical of what they are showing. The boxplot for **Diseases** suggests that the number of rabbit occurrences is higher with the more introduced biological control diseases, however, what may be driving this is that the fewer the number of introduced diseases, the further back in time we are and the earlier in time we go, the sampling effort decreases. The presence/absence of potential predators and competitors seem to suggest that on the country scale, the number of rabbit occurences increases. This could be a result of predators actually predating competitors of the invasive European Rabbit and Wallaby species competing more intensely with other herbivores. 
+
+Now let's look at some potential interactions between the variables. I will first use co-plots to look at interactions between the continuous and factor variables. 
+```{r, Rabbit Initial GDE Co-Plots, warning=FALSE}
+#for(i in Rabbit[, 9:27]){
+#  for(j in Rabbit[, 28:37]){
+#    coplot(Occurences ~ i | j, rows = 1, data = Rabbit)
+#    Sys.sleep(1)
+#  }
+#}
+```
+
+This nested for loop takes a long time to run, whilst I search for a solution I will do the scatter and box plots for the other scales first and then come back to the co-plots. 
+
+I will move on to the State/Territory-scale level with the first State/Territory I will look at being the Australian Capital Territory (ACT). As the natural log scale was used for the Country-scale I will use it here and for all further graphing. 
+```{r, Rabbit_ACT Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_ACT[, 9:27]){
+  print(ggplot(Rabbit_ACT, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_ACT[, 28:37]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_ACT)
+  Sys.sleep(1)
+}
+```
+
+The possible trends found in the Australia-Scale analysis was replicated for the ACT with the precipitation variables, year, distance to nearest argricultural land edge and distance to nearest permanent water feature may vary with rabbit occurences in ACT. The same possible trends in the factors at the Australia-scale were seen at the ACT scale. 
+
+Next, I will look at the New South Wales data set.
+```{r, Rabbit_NSW Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_NSW[, 9:27]){
+  print(ggplot(Rabbit_NSW, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_NSW[, 28:37]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_NSW)
+  Sys.sleep(1)
+}
+```
+
+The possible trends found in the Australia-Scale analysis was replicated for the NSW with the precipitation variables, year, distance to nearest argricultural land edge and distance to nearest permanent water feature may vary with rabbit occurences in NSW. The same possible trends in the factors at the Australia-scale were seen at the ACT scale except for diseases where no trend is likely and there are no whistling kite absences (a product of the method used to generate them). 
+
+Now I will move onto the Northern Territory data set.
+```{r, Rabbit_NT Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_NT[, 9:27]){
+  print(ggplot(Rabbit_NT, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_NT[, 28:37]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_NT)
+  Sys.sleep(1)
+}
+```
+
+In the Northern territory the percipitation, temperature, land use and day length variables may all vary with the number of rabbit occurences. The season effect seen on the Australia-scale may not exist in NT and there were again no wistling kite absences but all other factor trends seen in other data sets appear similar in NT. 
+
+Next, I repeated the analysis for Queensland (QLD).
+```{r, Rabbit_QLD Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_QLD[, 9:27]){
+  print(ggplot(Rabbit_QLD, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_QLD[, 28:33]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_QLD)
+  Sys.sleep(1)
+}
+```
+
+The plots for Queensland suggest that the trends suggested in the Australia-wide data except for no trend in year, likely due to the relatively greater sampling effert in QLD compared to the other states, and it was not possible to make box plots for the animal species except for red foxes and dingoes. 
+
+Now I will move on to South Australia. There are some issues with this data to note, only **VegeType** can be plotted as a box plot as **Diseases**, **Season** and **Month** only have one level and there is no data on any of the animal species. 
+```{r, Rabbit_SA Initial GDE Scatter and Box plots}
+#Scatter Plots
+#par(mfrow = c(2,3))
+#for(i in Rabbit_SA[, 9:27]){
+#  print(ggplot(Rabbit_SA, aes(x = i, y = log(Occurences))) +
+#          geom_point() + theme_classic())
+#  Sys.sleep(1)
+#}
+
+#Boxplots
+#boxplot(log(Occurences) ~ VegeType, data = Rabbit_SA)
+
+```
+
+There are plotting issues that I need to resolve latter but are due in part to there being no data for some variables and quality issues with what data is there as the occurences are all the same value. 
+
+Next, I move on to the Tasmania data set. In the TAS data set there is no data on the animal species, no variability in the number of occurences and only one factor level for all factors with data except for **VegeType**
+
+For the Victoria data set there is again no data for the animal species and **Diseases** has only one factor level but there is variability in occurences and so the data is plottable. 
+```{r, Rabbit_VIC Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_VIC[, 9:27]){
+  print(ggplot(Rabbit_VIC, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_VIC[, 28:31]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_VIC)
+  Sys.sleep(1)
+}
+```
+
+For the variables that could be plotted there are trends in all variables as was the case in NT. 
+
+For the Wesern Australia data set there is again no data for the animal species, precipitation variables, temperature variables and **Diseases** has only one factor level but there is variability in occurences and so the data is plottable.
+```{r, Rabbit_WA Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_WA[, 9:27]){
+  print(ggplot(Rabbit_WA, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_WA[, 28:31]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_WA)
+  Sys.sleep(1)
+}
+```
+
+There were trends with occurence for all the variables that had data, but the trends were quite different than the trends seen in other states/territories. 
+
+Now I will finally move on to the transect-scale data sets where the same exploratory data analysis of scatter, box and coplots will be done for each data set. I will start with the North-South transect data.
+```{r, NS Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in NS[, 9:27]){
+  print(ggplot(NS, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in NS[, 28:38]){
+  boxplot(log(Occurences) ~ i, data = NS)
+  Sys.sleep(1)
+}
+```
+
+In the North-South data there are possible trends in all of the continuous variables except year, day, distance to the edge of the nearest agricultural land and percentage clay in the soil. Something to note is that these possible trends appear more non-linear at this scale than the Country and State/Territory scales. There were no likely trends between rabbit occurences and the factor variables except for vegetation type (not all 13 types were present), season, month and red foxes. There was a possible effect of transect, something to note when it comes to modelling the data. 
+
+Finally the East-West data
+```{r, EW Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in EW[, 9:27]){
+  print(ggplot(EW, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in EW[, 28:36]){
+  boxplot(log(Occurences) ~ i, data = EW)
+  Sys.sleep(1)
+}
+```
+
+The East-West transect data largely has the same trends as the North-South transect data except disease likely has no effect on the occurence of rabbits. 
+
+Further reading in the literature has reveled that *Damien et al 2018* found that percipitation and temperature variables affected rabbit abundance in South Australia. Still in South Australia, *Cabrete et al 2003* found that soil hardness, agricultural land use and the distance to the nearest river as well as percipitation and temperature variables all affected rabbit abundance. They also found that farmland use correlated with a rabbit preference for shrubland over other vegetation types.
+
+Based on the initial GDE and the further reading the following research questions were constructed:
+
+ - can the findings of *Damien et al 2018* and *Cabrete et al 2003* be replicated across all Australian states and Territories
+ - are these findings also replicated at the country and transect scales
+ - if not, what are the variables that affect rabbit occurrence at the different scales
+ - does the presence/absence of potential predators/competitors affect rabbit occurences, if so at what scale
+ 
+This concludes the Initial GDE and Research Questions section
+
+## State/Territory Scale Statistical Analysis
+
+### South Australia
+
+#### GDE
+
+First, cleveland dotplots will be produced to look for potentially extreme values in the variables.
+```{r, SA dotplots}
+#par(mfrow = c(2,3))
+#dotchart(Rabbit_SA$Abund.3)
+#for(i in Rabbit_SA[, 11:27]){
+#  dotchart(i)
+#}
+```
+
+The dotplots suggests no numerical variable has extreme values and this is likely due to the large number of observations in this data set. 
+
+Next I will check for collinearity between the numerical variables using a pairs plot
+```{r, SA pairs plot}
+#par(mar=c(5.1, 4.1, 4.1, 2.1))
+#VOI = Rabbit_SA[, 11:27]
+#pairs2(VOI)
+```
+
+This pairs plot is unreadable, my solution is to do separate pairs plots for a subset of the variables. First, I will try reducing the number of variables in the pairs plot to 8 instead of 16.
+```{r, SA pairs plot 2}
+#VOI2 = Rabbit_SA[, 11:18]
+#VOI3 = Rabbit_SA[, 19:27]
+#pairs2(VOI2)
+#pairs2(VOI3)
+```
+
+The pairs plot does not seem to be working giving correlations of 0 and panels of NAs. I will try a regular pairs plot instead of my augmented pairs plot.
+```{r, SA pairs plot 3}
+#pairs(VOI2)
+#pairs(VOI3)
+```
+
+This did not resolve the issue, I can try reducing the number of variables in the plot further to 4.
+```{r, SA pairs plot 4}
+#VOI4 = Rabbit_SA[, 11:14]
+#VOI5 = Rabbit_SA[, 15:18]
+#VOI6 = Rabbit_SA[, 19:22]
+#VOI7 = Rabbit_SA[, 23:27]
+#pairs(VOI7)
+#rm(VOI, VOI2, VOI3, VOI4, VOI5, VOI6, VOI7, i, j)
+```
+
+My final graphical solution is to plot the pair-wise scatter plots by hand using for-loops. To narrow down the potential plots I need to create I will only make plots for variables highly likely to be colinear. These are the variables relating to percipitation, temperature and day length.
+```{r, SA percipitation pair-wise scatter-plots}
+#Percip_SA = cbind(Rabbit_SA[, 11:12], Rabbit_SA[, 19:22])
+#for(i in 1:ncol(Percip_SA)){
+#  for(j in 1:ncol(Percip_SA)){
+#    plot(i ~ j, data = Percip_SA)
+#  }
+#}
+#rm(Percip_SA)
+```
+
+This also did not work! I can try calculating the pairwise correlations using the *cor = TRUE* arguement of the *summary()* function. If variables are collinear they will have a pairwise correlation of about 0.80 or higher. 
+```{r, SA pairwise correlations}
+#for(i in 1:ncol(Percip_SA)){
+#  for(j in 1:ncol(Percip_SA)){
+#   print(cor(i,j, method = c("pearson")))
+#  }
+#}
+summary(Rabbit_SA)
+```
+
+I have discovered the error, all the values for SA are the same! This is an artifact of the data but it does mean that I can not investigate whether *Damein et al 2018* and *Cebrete et al 2003* can be replicated using this data. I will now move on to analysing the Australian Capital Territory data
+
+### Australian Capital Territory 
+
+#### GDE
+
+I will start with making Cleveland dotplots to check for potentially unusal and/or extreme values in the continuous data variables. 
+```{r, ACT dotplots}
+par(mfrow = c(2,3))
+dotchart(Rabbit_ACT$Abund.3)
+for(i in Rabbit_ACT[, 11:27]){
+  dotchart(i)
+}
+```
+
+The dotplots suggest there are no unusal or extreme values in any of the continuous variables apart from **Abund.3**, to try and lessen the impact on assumptions for statistical models the variable will be natrual-log transformed.
+```{r, ACT dotplots 2}
+Rabbit_ACT$Abund.3_ln = log(Rabbit_ACT$Abund.3)
+dotchart(Rabbit_ACT$Abund.3_ln)
+```
+
+This transformation sufficently reduced the extremness of some of the values in the **Abund.3** variable. I will now move on to creating pairs plots to detect colinearity.
+```{r, ACT pairs plot 1}
+Rabbit_ACT2= Rabbit_ACT[complete.cases(Rabbit_ACT[, 9:37]), ]
+
+VOI_ACT1 = Rabbit_ACT2[, 11:18]
+VOI_ACT2 = Rabbit_ACT2[, 19:27]
+
+pairs2(VOI_ACT1)
+pairs2(VOI_ACT2)
+```
+
+All precipitation variables were highly correlated (r > 0.65) with other precipitation variables except precipitation seasonality, but not with any other variables. Likewise, all temperature variables were highly correlated with each other except temperature seasonality and 30 year average of minimum temperature but not with any other variables. The minimum day length and variation in day length were highly correlated but not with any other variables. Finally, distance to the nearest permanent water fixture, distance to the nearest farmland edge and the percentage of clay in the soil were not highly correlated with any of the variables. 
+
+I can create a pairs plot for factors using the *ggpairs()* function from the *GGally* package and is effectively the ggplot2 equivalent to *pairs()* in base R. 
+```{r, ACT pairs plot 2}
+Rabbit_ACT3 = Rabbit_ACT[complete.cases(Rabbit_ACT[, 29:37]), ]
+
+VOI_ACT3 = Rabbit_ACT2[, 29:32]
+VOI_ACT4 = Rabbit_ACT2[, 33:37]
+
+ggpairs(VOI_ACT3, lower = list(combo = "count"))
+ggpairs(VOI_ACT4, lower = list(combo = "count"))
+```
+
+The pairs plots suggested that only month and vegetation type were potentially highly correlated but I am skeptical of this correlation as there is no biological reason for this. All other variables were not highly correlated with each other. 
+
+Based on the findings of the pair plots, the literature and biological reasonability, the following variables will be used:
+
+ - **Abund.3_ln**
+ - **A_Prec_Avg30Yr**: 30 year average of average precipitation, numeric
+ - **A_Psea_Avg30Yr**: 30 year average of average precipitation seasonality, numeric 
+ - **A_TAvg_Avg30Yr**: 30 year average of average temperature, numeric
+ - **A_TSea_Avg30Yr**: 30 year average of average temperature seasonality, numeric
+ - **DistPermWater**: euclidean distance in metres to the nearest permanent water feature, numeric
+ - **DistAgriLand**: euclidean distance in metres to the nearest agricultural land margins, numeric
+ - **PercSoilClay**: the percentage of estimated clay in the soil, numeric
+ - **VarDayLength**: variation in day length in hours, numeric
+ - **VegeType**: vegetation type, factor with 13 levels
+ - **Month**: month of the year, factor with 12 levels
+ - **Diseases**: the number of introduced diseases as biological control for rabbits in a given year, factor with 4 levels
+ - **Red.Fox**: presence/absence of red foxes, factor with 2 levels
+ - **Dingo**: presence/absence of dingoes , factor with 2 levels
+ - **Feral.Cat**: presence/absence of feral cats, factor with 2 levels 
+ - **Whistling.Kite**: presence/absence of whistling kites, factor with 2 levels
+ - **Wallaby.Sp** :presence/absence of a wallaby species, factor with 2 levels
+ 
+I decided to include precipitation and temperature seasonality as these represent natural disturbances as opposed to the effect of the weather phemomenon themselves. The variation in day length was chosen over minimum day length as it captures the lowest and highest level of activity in the rabbits as opposed to the minimum amount of activity that minimum day length captures. 
+
+These variables will be used going forward to look at the relationship with the natural log of rabbit occurence and to identify possible interactions to include in statistical models.
+```{r, ACT potential predictor variables}
+Rabbit_ACT$Occurences_ln = log(Rabbit_ACT$Occurences)
+Rabbit_ACT2$Occurences_ln = log(Rabbit_ACT2$Occurences)
+Rabbit_ACT2$Abund.3_ln = log(Rabbit_ACT2$Abund.3)
+Rabbit_ACT$Abund.3_ln = log(Rabbit_ACT$Abund.3)
+
+PPV_ACT1 = c("Occurences_ln", "A_Prec_Avg30Yr", "A_Psea_Avg30Yr", "A_TAvg_Avg30Yr", "A_TSea_Avg30Yr", "Abund.3_ln")
+PPV_ACT2 = c("Occurences_ln", "DistPermWater", "DistAgriLand", "PercSoilClay", "VarDayLength")
+pairs(Rabbit_ACT2[, PPV_ACT1])
+pairs(Rabbit_ACT2[, PPV_ACT2])
+```
+
+The pairs plots suggest that the response varies linearly with the precipitation and temperature variables as well as the natural log of abundance. However, the response may decay exponentially with distance to the nearest permanent water feature and the distance to the nearest farm edge, suggesting that these variables should be log-transformed when fitting linear models. Finally, the pairs plots suggest that the response varies linearly with the percentage clay in the soil and the variation in day length. 
+```{r, ACT transforming variables}
+Rabbit_ACT$DistPermWater_ln = log(Rabbit_ACT$DistPermWater)
+Rabbit_ACT$DistAgriLand_ln = log(Rabbit_ACT$DistAgriLand)
+```
+
+Now I will look at potential interactions between the selected predictors.
+```{r, ACT interaction plots 1}
+par(mfrow = c(2,3))
+boxplot(Occurences_ln ~ Red.Fox*Dingo, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Red.Fox*Feral.Cat, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Red.Fox*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Red.Fox*Wallaby.Sp, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Dingo*Feral.Cat, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Dingo*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Dingo*Wallaby.Sp, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Feral.Cat*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Feral.Cat*Wallaby.Sp, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Wallaby.Sp*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Diseases*Red.Fox, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Diseases*Dingo, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Diseases*Feral.Cat, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Diseases*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Diseases*Wallaby.Sp, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ VegeType*Red.Fox, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ VegeType*Dingo, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ VegeType*Feral.Cat, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ VegeType*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ VegeType*Wallaby.Sp, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Diseases, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Red.Fox, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Dingo, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Feral.Cat, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Wallaby.Sp, data = Rabbit_ACT)
+```
+
+The interaction plots suggest that when 2 potential predators or a potential predator and a wallaby species are both present the number of rabbit occurences on the natural log-scale increases. No other interactions seem to be suggested. However, whilst these are interesting interactions they could also be artifacts of the process used to generate the absence data. 
+
+Now to look at continuous-categorical interactions
+```{r, ACT interaction plots 2}
+coplot(Occurences_ln ~ Abund.3_ln | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ A_Prec_Avg30Yr | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ A_Psea_Avg30Yr | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ A_TAvg_Avg30Yr | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ A_TSea_Avg30Yr | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ DistPermWater | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ DistAgriLand | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ PercSoilClay | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ VarDayLength | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ Abund.3_ln | VegeType, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ DistPermWater | VegeType, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ DistAgriLand | VegeType, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ Abund.3_ln | Diseases, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+```
+
+the co-plots suggest that there are potential interactions between the seasonality variables and month as well as an interaction between rabbit abundance and the diseases present (not only data on no diseases present and when myxomatosis is present were available for ACT). 
+
+Based on the interaction plots and biological reasoning the following interactions will be intially used in statistical models:
+
+ - **Abund.3_ln** x **Diseases**
+ - **A_Psea_Avg30yr** x **Month**
+ - **A_Tsea_Avg30yr** x **Month**
+ - **Red.Fox** x **Dingo**
+ - **Red.Fox** x **Feral.Cat**
+ - **Red.Fox** x **Wallaby.Sp**
+ - **Dingo** x **Wallaby.Sp**
+ 
+I have limited myself to 4 two-way species interactions as these represent different types of species dynamics (invasive.pred x native.pred, invasive.pred x invasive.pred, invasive.pred x native.prey, native.pred x native.prey) which is more generalisable than specific species interacting with each other. 
+
+#### Statistical Modelling
+
+As the rabbit occurences data are counts my initial model will be a simple poisson generalized linear model with a natural log link function
+```{r, ACT model building 1}
+m1_ACT = glm(Occurences ~ Abund.3_ln+ Red.Fox*Dingo + Whistling.Kite + Month + 
+               Red.Fox*Feral.Cat + Red.Fox*Wallaby.Sp + Dingo*Wallaby.Sp+ DistAgriLand*VegeType + 
+               A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + PercSoilClay + VarDayLength, 
+             family = poisson(link = "log"), data = Rabbit_ACT2)
+summary(m1_ACT)
+```
+
+The seasonality variables had to be removed from the model as R did not let them be induded but when the model was run the error Warning 'glm.fit: fitted rates numerically 0 occurred' was returned. This error can occur due to over fitting the data or structural zeros in the data. It is likely over-fitting is the cause as when I checked the model summary effect size of magnitude 0.0x were represented as xe-02, indicative of over fitting the data. To combat this, **Whistling.Kite** and **PercSoilClay** were removed and the model was refitted.
+```{r, ACT model building 2}
+m2_ACT = glm(Occurences ~ Abund.3_ln+ Red.Fox*Dingo + Month + Red.Fox*Feral.Cat +
+             Red.Fox*Wallaby.Sp + Dingo*Wallaby.Sp+ DistAgriLand*VegeType + 
+               A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + VarDayLength, 
+             family = poisson(link = "log"), data = Rabbit_ACT2)
+summary(m2_ACT)
+```
+
+The same error occured but the intercations between the species seem to be unidentifable so can be removed from the model and the variables added additvely.
+```{r, ACT model building 3}
+m3_ACT = glm(Occurences ~ Red.Fox + Dingo + Month + Feral.Cat +
+             Wallaby.Sp+ DistAgriLand*VegeType + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + 
+             DistPermWater, family = poisson(link = "log"), data = Rabbit_ACT2)
+summary(m3_ACT)
+```
+
+The same issue occurred again but I am reluctant to exclude more variables so I will just accept this error and factor it in to interpreting the outputs. Now for model diagnostics
+```{r, ACT model diagnostics}
+#diagnostic plots
+res.d_m3_ACT = resid(m3_ACT, type = "deviance")
+par(mfrow = c(2,3))
+plot(m3_ACT, which = c(1, 3, 4))
+plot(res.d_m3_ACT)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Abund.3_ln, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Red.Fox, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Dingo, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Month, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Feral.Cat, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Wallaby.Sp, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ DistAgriLand, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ VegeType, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ A_Prec_Avg30Yr, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ A_TAvg_Avg30Yr, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ DistPermWater, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ VarDayLength, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+
+#dispersion and colinearity
+dispersion = 375.12/3341
+dispersion
+#vif(m3_ACT) returned a message that there are aliased coefficents meaning some variables are perfectly correlated
+```
+
+Due to the error message in the variance inflation factor function I need to find the linear combination that is perfectly correlated. 
+```{r, detecting linearly dependent combination}
+ld.vars <- attributes(alias(m3_ACT)$Complete)$dimnames[[1]]
+ld.vars
+```
+
+This makes sense as the effect size for this linear combination is NA, indicative of perfect correlation. I can try and standardise **DistAgriLand** and see if this resolves the issue.
+```{r, standardising DistAgriLand}
+a = mean(Rabbit_ACT2$DistAgriLand, na.rm = TRUE)
+b = sd(Rabbit_ACT2$DistAgriLand)
+Rabbit_ACT2$DistAgriLand.std = (Rabbit_ACT2$DistAgriLand - a)/b
+```
+
+The plots of the residuals as well as the dispersion parameter indicate there is serious under dispersion in the data. This implies the mean decreases as the variance increases and violates the assumption of the poisson distribution that the mean equals the variance. There are alternative models, namely a quasi-poisson glm and a negative binomial glm that can be used for under/over-dispersed data. If the mean changes linearly with the variance than the quasi-poisson glm is the more appropriate of the two but if the mean changes quadratically with the variance than the negative binomial glm is the more appropriate of the two models. The fits vs residuals and scale-location plot both suggest that the mean changes linearly with the variance, as such fitting a quasi-poisson glm would be the most appropriate next step. 
+```{r, ACT model building 4}
+m4_ACT = glm(Occurences ~ Red.Fox + Dingo + Month + Feral.Cat +
+             Wallaby.Sp+ DistAgriLand*VegeType + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + 
+             DistPermWater, family = quasipoisson(link = "log"), data = Rabbit_ACT2)
+summary(m4_ACT)
+```
+
+The model was run using **DistAgriLand.std** but this did not change the perfect correlation between **DistAgriLand** and **VegeType11**.
+
+Now for the model diagnostics
+```{r, ACT model diagnostics 2}
+res.d_m4_ACT = resid(m4_ACT, type = "deviance")
+par(mfrow = c(2,3))
+plot(m4_ACT, which = c(1, 3, 4))
+plot(res.d_m4_ACT)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Abund.3_ln, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Red.Fox, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Dingo, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Month, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Feral.Cat, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Wallaby.Sp, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ DistAgriLand, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ VegeType, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ A_Prec_Avg30Yr, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ A_TAvg_Avg30Yr, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ DistPermWater, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ VarDayLength, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+```
+
+Using the quasi-poisson glm seems to have reduced the under-dispersion in most of the variable but the influential residuals are likely still increasing the standard errors of some parameters. 
+
+```{r, ACT model selection 1}
+drop1(m4_ACT, test = "Chisq")
+```
+
+The interaction tem was significant so was kept in the model but the additive term with the largest p-value was **Month**, as such it was removed from the model
+```{r, ACT model selection 2}
+m5_ACT = update(m4_ACT, formula = drop.terms(m4_ACT$terms, 3, keep.response = TRUE))
+drop1(m5_ACT, test = "Chisq")
+```
+
+The interaction term remained significant so was kept in the model but the additive term with the largest p-value was **Red.Fox**, as such it was removed from the model.
+```{r, ACT model selection 3}
+m6_ACT = update(m5_ACT, formula = drop.terms(m5_ACT$terms, 1, keep.response = TRUE))
+drop1(m6_ACT, test = "Chisq")
+```
+
+The interaction term is still significant so was kept in the model but the additive term with the largest p-value was **Dingo**, as such it was removed from the model
+```{r, ACT model selection 4}
+m7_ACT = update(m6_ACT, formula = drop.terms(m6_ACT$terms, 1, keep.response = TRUE))
+drop1(m7_ACT, test = "Chisq")
+```
+
+The interaction term was still significant so was kept in the model but the additive term with the largest p-value was **Wallaby.SP**, as such it was removed from the model.
+```{r, ACT model selection 5}
+m8_ACT = update(m7_ACT, formula = drop.terms(m7_ACT$terms, 2, keep.response = TRUE))
+drop1(m8_ACT, test = "Chisq")
+```
+
+The interaction term was still significant so was kept in the model and the only additive term with a non-significant p-value was **Feral.Cat**, as such it was removed from the model.
+```{r, ACT model selection 6}
+m9_ACT = update(m8_ACT, formula = drop.terms(m8_ACT$terms, 1, keep.response = TRUE))
+drop1(m9_ACT, test = "Chisq")
+```
+
+All remaining terms in the model are significant and so will stay in the model. Thus **m9_ACT** is the final model for the Australian Capital Territory data set. 
+```{r, ACT final model}
+final_ACT = m9_ACT
+summary(final_ACT)
+anova(final_ACT, test = "Chisq")
+par(mfrow = c(2,2))
+plot(final_ACT, which = c(1, 3, 4))
+plot(final_ACT$residuals)
+```
+
+The coefficent values with effect sizes of less than -10 are effectively 0 when back-transformed to the response scale and those with an effect size of between -5 and -10 have orders of magnitude less than -3 when back transformed onto the response scale making them very small effect sizes and most likely unimportant biologically despite the highly significant p-values. Thus, Eucalyptus woodland (VegeType 3), woodland (VegeType4), tussock grassland(VegeType8), hummock grassland (VegeType9) and saltbushes(VegeType10) have no biologically meaningful effect sizes. It is also important to note that vegetation types 1, 5, 6, 12 and 13 were not present in the Australian Capital territory and vegetation types 3, 8 and 10 had sample sizes less than 10. Interestingly, the interaction term between **DistAgriLand** and **VegeType** has positive effect sizes but I will discuss with my supervisor on how to interpret this in light of the linearly dependent combination mentioned earlier. 
+
+The continuous variables all decreased the rabbit occurence rate except for disance to the nearest permanent water feature which increased the rabbit occurence rate. 
+
+As **VegeType** is significant and a factor I would like to know which factor levels differ between eachother, to do this I can do post-hoc testing using the *emmeans* package and plot the results
+```{r, post-hoc testing}
+final_ACT_emm = emmeans(final_ACT, "VegeType", type = "response")
+final_ACT_emm
+pairs(final_ACT_emm)
+contrast(final_ACT_emm, type = "response")
+plot(contrast(final_ACT_emm, type = "response"))
+plot(pairs(final_ACT_emm))
+```
+
+These post-hoc test results require discussion with Dr Trinder as I suspect df = Inf would make these results un-interpretable but I am not sure.
+
+I will now try and plot the predictions of the model, this should help with interpretation.
+```{r, ACT plotting model predictions}
+#A_Prec_Avg30yr
+a = max(Rabbit_ACT2$A_Prec_Avg30Yr, na.rm = TRUE)
+b = min(Rabbit_ACT2$A_Prec_Avg30Yr, na.rm = TRUE)
+Prec.seq = c(seq(from = b, to = a, by = 0.196), rep(NA, times = 14))
+newdat = data.frame(A_Prec_Avg30Yr = Prec.seq, Occurences = Rabbit_ACT2$Occurences,
+                    VegeType = Rabbit_ACT2$VegeType, A_TAvg_Avg30Yr = Rabbit_ACT2$A_TAvg_Avg30Yr, 
+                    DistPermWater = Rabbit_ACT2$DistPermWater, DistAgriLand = Rabbit_ACT2$DistAgriLand)
+pred = predict.glm(final_ACT, se.fit = TRUE, type = "link", newdata = newdat, na.action = NULL, 
+                   dispersion = TRUE)
+plot(Occurences ~ A_Prec_Avg30Yr, xlab = "30yr Mean Average of Mean Average Percipitation (mL)", 
+     ylab = "Rabbit Occurences", data = Rabbit_ACT2)
+lines(newdat$A_Prec_Avg30Yr, exp(pred$fit), col = 1, lwd = 2)
+lines(newdat$A_Prec_Avg30Yr, exp(pred$fit + 1.96*pred$se.fit), col = 1, lwd = 2, lty = 3)
+lines(newdat$A_Prec_Avg30Yr, exp(pred$fit - 1.96*pred$se.fit), col = 1, lwd = 2, lty = 3)
+```
