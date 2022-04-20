@@ -1,0 +1,1332 @@
+---
+title: "Abundance Data Analysis"
+author: "Dean Wilkinson"
+date: "15/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,tidy.opts=list(width.cutoff=30),tidy=TRUE)
+```
+
+## Introduction
+
+In this document I will be running analyses on the rabbit abundance data to see if the results of this analysis are the same as those obtained from the occurence data analysis. The abundance data has several differences to the occurence data. Namely, that there are sampling transects, daily mean average perceipitation/temperature, monthly mean average percipitation/temperature and 30day, 1yr and 2yr lag variables of percipitation and temperature variables. For consistency, these variables won't be included in the analysis except for the transect data as this can be used as a random effect in generalized linear mixed modelling. 
+
+There is also no data on predator/competitor presence/absence as the data is out-with the abundance timescale. Additionally, no disease data are possible as the timescale of the data has no control with no diseases circulating. 
+
+Variable names of those used:
+
+ - **Grid_ID**: unique 10km grid identifier, numeric
+ - **Lat**: decimal latitude, numeric
+ - **Long**: decimal longitude, numeric
+ - **Abundance**: number of rabbits per kilometre, numeric
+ - **Year**: year the observations were recorded, integer/numeric
+ - **Day**: day of the year the observations were recorded, integer/numeric
+ - **A_Prec_Avg30Yr**: 30 year average of average precipitation, numeric 
+ - **A_Psea_Avg30Yr**: 30 year average of average precipitation seasonality, numeric 
+ - **A_TAvg_Avg30Yr**: 30 year average of average temperature, numeric
+ - **A_TMax_Avg30Yr**: 30 year average of average maximum temperature, numeric
+ - **A_TMin_Avg30Yr**: 30 year average of average minimum temperature, numeric
+ - **A_TSea_Avg30Yr**: 30 year average of average temperature seasonality, numeric
+ - **A_TWet_Avg30Yr**: 30 year average of average temperature in the wettest quarter of the year, numeric
+ - **A_TWrm_Avg30Yr**: 30 year average of average temperature in the warmest quarter of the year, numeric
+ - **A_Prec_AvgAutumn30Yr**: 30 year average of average precipitation in Autumn, numeric
+ - **A_Prec_AvgSummer30Yr**: 30 year average of average precipitation in Summer, numeric
+ - **A_Prec_AvgSpring30Yr**: 30 year average of average precipitation in Spring, numeric
+ - **A_Prec_AvgWinter30Yr**: 30 year average of average precipitation in Winter, numeric
+ - **DistPermWater**: euclidean distance in metres to the nearest permanent water feature, numeric
+ - **DistAgriLand**: euclidean distance in metres to the nearest agricultural land margins, numeric
+ - **PercSoilClay**: the percentage of estimated clay in the soil, numeric
+ - **MinDayLength**: minimum day length in hours, numeric 
+ - **VarDayLength**: variation in day length in hours, numeric
+ - **VegeType**: vegetation type, factor with 13 levels
+ - **Season**: meterological season according to the Australian calendar, factor with 4 levels
+ - **Month**: month of the year, factor with 12 levels
+ - **Transect_Sample**: ID of transect used when estimating abundance, factor 
+ 
+The 13 vegetation types were a re-classification of all the vegetation types in Australia as described by the Environment Department of the Australian Government classification scheme and the original classes can be found at "https://www.awe.gov.au/agriculture-land/land/native-vegetation/national-vegetation-information-system/data-products". The re-classifications used in the data set are found below:
+
+ - 1 = Rainforest and vine thickets
+ - 2 = Eucalyptus forest
+ - 3 = Eucalyptus woodland
+ - 4 = Woodlands
+ - 5 = Seasonal inundated swamps, salt marches and mangroves
+ - 6 = Low closed forests and tall closed shrublands
+ - 7 = Shrublands
+ - 8 = Tussock grasslands
+ - 9 = Hummock grasslands
+ - 10 = Saltbushes
+ - 11 = Cleared vegetation, naturally bare
+ - 12 = Water
+ - 13 = Unclassified/Unknown/Other
+
+As **Season** is coded according to the Australian calender the numeric coding of 1-4 represents different seasons than would be the case for a Northern hemisphere nation:
+
+ - 1 = Summer
+ - 2 = Autumn
+ - 3 = Winter
+ - 4 = Spring
+ 
+The state variable refers to the 8 states/territories of Australia coded with their 2/3-letter coding with the full names of each state/territory given below:
+
+ - ACT = Australian Capital Territory
+ - NSW = New South Wales
+ - NT = Northern Territory
+ - QLD = Queensland
+ - SA = South Australia
+ - TAS = Tasmania
+ - VIC = Victoria
+ - Western Australia
+ 
+## R Environment Setup and Data Importing
+
+First, as always I will load the required packages
+```{r, loading required packages}
+library(nlme)
+library(lme4)
+library(glmmTMB)
+library(gee)
+library(ggplot2)
+library(GGally)
+library(ggeffects)
+library(patchwork)
+library(tidyverse)
+library(effects)
+library(AICcmodavg)
+library(emmeans)
+library(car)
+library(modEvA)
+```
+
+Now I will import the abundance data, storing it as **Abund**, and then check it.
+```{r, importing the data}
+Abund = read.table("E:/Masters Project/BI5002 (Masters Project)/Invasive European Rabbit Data/Abundance_Database.csv", 
+                    header = TRUE, stringsAsFactors = TRUE, sep = ",")
+str(Abund)
+summary(Abund)
+head(Abund, n = 10)
+tail(Abund, n = 10)
+```
+
+The factors have not been imported as such so I will need to do that manually. 
+```{r, factorising the factors}
+#Factorise
+Abund$State = factor(Abund$State)
+Abund$VegeType = factor(Abund$VegeType)
+Abund$Month = factor(Abund$Month)
+Abund$Season = factor(Abund$Season)
+Abund$Transect_Sample = factor(Abund$Transect_Sample)
+Abund$TransectWidth = factor(Abund$TransectWidth)
+Abund$TransectLength = factor(Abund$TransectLength)
+
+#Check the data
+str(Abund)
+summary(Abund)
+```
+
+Everything now looks as it should so I will now move on to making the state/territory level abundance datasets which I will denote as **Abund_State/Territory**. 
+```{r, State/Territory level datasets}
+#Subset the original data
+Abund_ACT = Abund[Abund$State == "ACT", ]
+Abund_NSW = Abund[Abund$State == "NSW", ]
+Abund_NT = Abund[Abund$State == "NT", ]
+Abund_QLD = Abund[Abund$State == "QLD", ]
+Abund_SA = Abund[Abund$State == "SA", ]
+Abund_TAS = Abund[Abund$State == "TAS", ]
+Abund_VIC = Abund[Abund$State == "VIC", ]
+Abund_WA = Abund[Abund$State == "WA", ]
+
+#Check the subsets
+summary(Abund_ACT)
+summary(Abund_NSW)
+summary(Abund_NT)
+summary(Abund_QLD)
+summary(Abund_SA)
+summary(Abund_TAS)
+summary(Abund_VIC)
+summary(Abund_WA)
+```
+
+All states appear to have variation in **Abundance**, with few NA values in the variables. The 5-figure summary suggests that **Abundance** is heavily right-skewed. 
+
+I will now make the transect-scale data using the same coordinates as I did in the occurence data for consistency. 
+```{r, transect scale datasets}
+#North-South Transects
+Abund_NS1 = Abund[Abund$Long == 152.65, ] #2 obs
+Abund_NS2 = Abund[Abund$Long == 152.65 - 5.00, ] #1476 obs
+Abund_NS3 = Abund[Abund$Long == 152.65 - 10.00, ] #576
+Abund_NS4 = Abund[Abund$Long == 152.65 - 15.00, ] #0 obs
+Abund_NS5 = Abund[Abund$Long == 152.65 - 20.00, ] #0 obs
+Abund_NS6 = Abund[Abund$Long == 152.65 - 25.00, ] #0 obs
+Abund_NS7 = Abund[Abund$Long == 152.65 - 30.00, ] #0 obs
+Abund_NS8 = Abund[Abund$Long == 152.65 - 35.00, ] #0 obs
+Abund_NS9 = Abund[Abund$Long == 114.95, ] #105 obs
+
+#East-West Transects
+Abund_EW1 = Abund[Abund$Lat == -22.75, ] #4 obs
+Abund_EW2 = Abund[Abund$Lat == -22.75 - 5.00, ] #0 obs
+Abund_EW3 = Abund[Abund$Lat == -22.75 - 10.00, ] #223 obs
+Abund_EW4 = Abund[Abund$Lat == -22.75 - 15.00, ] #2370 obs
+Abund_EW5 = Abund[Abund$Lat == -43.25, ] #198 obs
+
+#Create the data frames
+Abund_NS = rbind(Abund_NS1, Abund_NS2, Abund_NS3, Abund_NS4, Abund_NS5, Abund_NS6, 
+                 Abund_NS7, Abund_NS8, Abund_NS9)
+Abund_NS = as.data.frame(Abund_NS)
+Abund_EW = rbind(Abund_EW1, Abund_EW2, Abund_EW3, Abund_EW4, Abund_EW5)
+Abund_EW = as.data.frame(Abund_EW)
+
+#Remove Transect specific data frames
+rm(Abund_NS1, Abund_NS2, Abund_NS3, Abund_NS4, Abund_NS5, Abund_NS6, 
+                 Abund_NS7, Abund_NS8, Abund_NS9)
+rm(Abund_EW1, Abund_EW2, Abund_EW3, Abund_EW4, Abund_EW5)
+
+#Create Transect Variables
+w = rep(letters[1:9], times = c(2, 1476, 576, 0, 0, 0, 0, 0, 105))
+v = rep(letters[1:5], times = c(4, 0, 223, 2370, 198))
+Abund_NS$Transect = factor(w)
+Abund_EW$Transect = factor(v)
+
+#Check the data
+str(Abund_NS)
+str(Abund_EW)
+```
+
+The data sets look as they should. This concludes the "R Environment Setup and Data Importation" section. Next, I will move on to analysing the abundance data for the Australian Capital Territory using the same variables as was used in the corresponding occurence model (except the animal presence/absence variables). It is for this purpose that data exploration will be skipped for now!
+
+## Statistical Analysis
+
+### Australian Capital Territory
+
+First, I want to see what vegetation types are in the ACT and whether **Transect_Sample** is likely to be a meaningful random effect.
+```{r, ACT GDE}
+boxplot(Abundance ~ VegeType, data = Abund_ACT)
+boxplot(Abundance ~ Transect_Sample, data = Abund_ACT)
+```
+
+The only vegetation types in the ACT are Eucalyptus forest and Eucalyptus woodland are in ACT, and it is unclear if **Transect_Sample** will be a good random effects from the plot alone. 
+
+I will now fit the model, as abundance is a continuous non-negative quantity a glm with Gamma distributed error is likely the most appropriate error distribution. I will include **Transect_Sample** as a random effect, as such a generalized linear mixed model (GLMM) with Gamma distributed error will be the most approporiate model structure. As already mentioned only the variables used in *m1_ACT* will be used in order to make direct comparisons. I will use a natural log link function as like with occurence there is likely a multiplicative mechanism with abundance instead of a time to event mechanism that would warrant a inverse link function.
+```{r, ACT model building 1}
+Abund_ACT$Abundance.2 = Abund_ACT$Abundance + 1
+Abs_ACT1 = glmer(Abundance.2 ~ Month +  DistAgriLand + A_Prec_Avg30Yr +  A_TAvg_Avg30Yr +
+                 DistPermWater + PercSoilClay + VarDayLength + (1|Transect_Sample), 
+                 family = Gamma(link = "log"), data = Abund_ACT)
+summary(Abs_ACT1)
+```
+
+The random-effect has a standard deviation of less than 1, suggesting that it is basically 0 and can most likely be removed from the model. 
+```{r, ACT model building 2}
+Abs_ACT2 = glm(Abundance.2 ~ Month +  DistAgriLand + A_Prec_Avg30Yr +  A_TAvg_Avg30Yr +
+                 DistPermWater + PercSoilClay + VarDayLength, 
+                 family = Gamma(link = "log"), data = Abund_ACT)
+summary(Abs_ACT2)
+```
+
+The model output suggests that **A_TAvg_Avg30Yr**, **DistPermWater**, **PercSoilClay** and **VarDayLength** are perfectly correlated as their coefficents, standard errors, t-values and p-values could not be estimated. I can confirm this by identifying linearly dependent combinations using the code below.
+```{r, ACT detecting linearly dependent combination}
+ld.vars = attributes(alias(Abs_ACT2)$Complete)$dimnames[[1]]
+ld.vars
+```
+
+This is confirmed by retreiving the aliased coefficents, as such I will remove **DistPermWater**, **PercSoilClay** and **VarDayLength** from the model and re-fitted the model. 
+```{r, ACT model building 3}
+Abs_ACT3 = glm(Abundance.2 ~ Month +  DistAgriLand + A_Prec_Avg30Yr +  A_TAvg_Avg30Yr, 
+                 family = Gamma(link = "log"), data = Abund_ACT)
+summary(Abs_ACT3)
+```
+
+**A_TAvg_Avg30Yr** is still alised so was removed and the model was re-fitted.
+```{r, ACT model building 3}
+Abs_ACT4 = glm(Abundance.2 ~ Month +  DistAgriLand + A_Prec_Avg30Yr, 
+                 family = Gamma(link = "log"), data = Abund_ACT)
+summary(Abs_ACT4)
+```
+
+No coefficients are aliased and I can now move on to checking the model assumptions, but the dispersion parameter is over-estimated by about a factor of 2. 
+```{r, ACT model diagnostics}
+a = resid(Abs_ACT4, type = "deviance")
+par(mfrow = c(2,2))
+plot(Abs_ACT4, which = c(1,3,4))
+plot(a)
+```
+
+The model diagnostics look okay, the residuals are fairly independent and the dispersion in the data is adequately accounted for in the residuals vs fits plots. As there are non-significant terms in the model I will perform model selection using LRT to be consistent with the occurence data. 
+```{r, ACT model selection 1}
+drop1(Abs_ACT4, test = "Chisq")
+```
+
+**A_Prec_Avg30Yr** was the non-significant term with the largest non-significant p-value so was removed from the model and the model was re-fitted. 
+```{r, ACT model selection 2}
+Abs_ACT5 = update(Abs_ACT4, formula = drop.terms(Abs_ACT4$terms, 3, keep.response = TRUE))
+drop1(Abs_ACT5, test = "Chisq")
+```
+
+**DistAgriLand** was the only non-significant term in the model, as such it was removed and the model was re-fitted. 
+```{r, ACT model selection 3}
+Abs_ACT6 = update(Abs_ACT5, formula = drop.terms(Abs_ACT5$terms, 2, keep.response = TRUE))
+drop1(Abs_ACT6, test = "Chisq")
+```
+
+**Month** is a significant term and so this can be accepted as the final model. I will make a quick plot of the model predictions for comparison with how plotting a factor turned out in the NSW data set when analysing the occurrence data.
+```{r, ACT model predictions}
+preds.Abs_ACT.Month = ggpredict(Abs_ACT6, terms = "Month")
+p.Abs_ACT = ggplot(preds.Abs_ACT.Month) + 
+  geom_point(aes(x, y = predicted), size = 2) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Month", y = "Abundance", title = "") + 
+  scale_x_discrete(label = xticks) + 
+  theme_customized()
+p.Abs_ACT
+#ggsave("Abundance ACT.png")           
+```
+
+Before preceding onwards, I want to create the gamma equivalents of my **pois_ci** and **pois_eqn** for being able to plot the model equation along with the Deviance-squared measure. I also want to create a dispersion function as the dispersion parameter shown in the summary output of a Gamma glm can be inaccurate. A way to get around this is to use the model and estimate the shape parameter of the Gamma distribution of the residuals as the inverse of the shape parameter is the dispersion parameter. 
+```{r, confidence interval and model equation functions}
+#Confidence interval function
+Gam_ci = function(pred, data){
+fit = pred$fit
+lower = fit - 1.96*pred$se.fit
+upper = fit + 1.96*pred$se.fit
+
+return(data.frame(fit = exp(fit), lwr = exp(lower), upr = exp(upper), data))
+}
+
+#Model equation function
+Gam_eqn = function(x, y, df){
+  m = glm(y ~ x, family = Gamma(link = "log"), data = df)
+  eq = substitute(italic(y) == e^(a + b %.% italic(x))*""~~italic(D)^2~"="~D2, 
+         list(a = format(unname(coef(m)[1]), digits = 2),
+              b = format(unname(coef(m)[2]), digits = 2),
+              D2 = format(Dsquared(m)*100, digits = 2)))
+    as.character(as.expression(eq));
+}
+
+#Dispersion parameter function
+Gam_disp = function(mod){
+  shape = MASS::gamma.shape(mod)
+  phi = round(1/shape$alpha, digits = 2)
+  return(phi)
+}
+
+```
+
+### New South Wales
+
+First, I will see what vegetation types are in this state
+```{r, NSW boxplot}
+Abund_NSW$Abundance.2 = Abund_NSW$Abundance + 1
+boxplot(Abundance ~ VegeType, data = Abund_NSW)
+```
+
+Only vegetation types 3 (Eucalyptus woodland), 4 (Woodlands), 8 (Tussock grassland), 10 (Saltbushes), 11 (Cleared vegetation/naturally bare) and 12 (water). 
+
+Now I will move on to analysing the New South Wales data set. I will start with a simple gamma glm given the issues of starting with a gamma glmm for the Australian Capital Territory
+```{r, NSW model building 1}
+Abs_NSW1 = glm(Abundance.2 ~ Month + DistAgriLand*VegeType + A_TSea_Avg30Yr + A_Psea_Avg30Yr +  
+             A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + PercSoilClay + VarDayLength, 
+             family = Gamma(link = "log"), data = Abund_NSW)
+summary(Abs_NSW1)
+```
+
+There are no linearly dependent combinations excpet for the interaction between **DistAgriLand** and **Vegetype** so the interaction term was dropped and terms included additively. 
+```{r, NSW model building 2}
+Abs_NSW2 = glm(Abundance.2 ~ Month + DistAgriLand + VegeType + A_TSea_Avg30Yr + A_Psea_Avg30Yr +  
+             A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + PercSoilClay + VarDayLength, 
+             family = Gamma(link = "log"), data = Abund_NSW)
+summary(Abs_NSW2)
+```
+
+There are no alised coefficents, so I will now move on to model diagnostics.
+```{r, NSW model diagnostics 1}
+par(mfrow = c(2,2))
+plot(Abs_NSW2, which = c(1,3,4))
+plot(resid(Abs_NSW2, type = "deviance"))
+abline(h = 0, col = 2, lwd = 2, lty = 2)
+```
+
+The diagnostic plots of the model suggest that dispersion is adequately accounted for but some non-linearity may be present likely in **DistAgriLand** so I will ln transform the variable and re-fit the model, there are no influential or extreme residuals and the residuals are  approximately independent.
+```{r, model building 3}
+#Transform variable
+Abund_NSW$DistAgriLand_ln = log(Abund_NSW$DistAgriLand + 1)
+
+#Fit the model
+Abs_NSW = glm(Abundance.2 ~ Month + DistAgriLand_ln + VegeType + A_TSea_Avg30Yr + A_Psea_Avg30Yr +  
+             A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + PercSoilClay + VarDayLength, 
+             family = Gamma(link = "log"), data = Abund_NSW)
+summary(Abs_NSW)
+
+#Check model assumptions
+par(mfrow = c(2,2))
+plot(Abs_NSW, which = c(1,3,4))
+plot(resid(Abs_NSW, type = "deviance"))
+abline(h = 0, col = 2, lwd = 2, lty = 2)
+```
+
+As there are non-significant terms in the model I will now perform model selection. 
+```{r, NSW model selection 1}
+drop1(Abs_NSW2, test = "Chisq")
+```
+
+**DistPermWater** was the non-significant term with the largest p-value, as such it was removed from the model and the model was re-fitted. 
+```{r, NSW model selection 2}
+Abs_NSW3 = update(Abs_NSW2, drop.terms(Abs_NSW2$terms, 8, keep.response = TRUE))
+drop1(Abs_NSW3, test = "Chisq")
+```
+
+**PercSoilClay** was the non-significant term with the largest p-value, as such it was removed from the model and the model was re-fitted. 
+```{r, NSW model selection 3}
+Abs_NSW4 = update(Abs_NSW3, drop.terms(Abs_NSW3$terms, 8, keep.response = TRUE))
+drop1(Abs_NSW4, test = "Chisq")
+```
+
+**VegeType** was the only non-significant term in the model so was removed
+```{r, NSW model selection 4}
+Abs_NSW5 = update(Abs_NSW4, drop.terms(Abs_NSW4$terms, 3, keep.response = TRUE))
+drop1(Abs_NSW5, test = "Chisq")
+```
+
+All terms are significant in the model, as such this will be used as the final model with final model diagnostics and analyses being done next. 
+```{r, NSW final model}
+Abs_NSW.final = Abs_NSW5
+summary(Abs_NSW.final)
+anova(Abs_NSW.final, test = "Chisq")
+Gam_disp(Abs_NSW.final)
+par(mfrow = c(2,2))
+plot(Abs_NSW.final, which = c(1,3,4))
+plot(resid(Abs_NSW.final, type = "deviance"))
+abline(h = 0, col = 2, lwd = 2, lty = 2)
+```
+
+The model diagnostics suggest that the model assumptions are adequately met with approximately homogenous, no influential or extreme residuals and approximately independent residuals. The dispersion parameter was estimated at 0.73, which is very close to the 0.83 calculated from residual.dev/residual.df suggesting under-dispersion in the data but this is accounted for in the model so is not an issue. 
+
+Now I will plot the model predictions. 
+```{r, NSW model predictions}
+#Create the predictions
+preds.Abs_NSW.Month = ggpredict(Abs_NSW.final, terms = "Month")
+preds.Abs_NSW.Farm = ggpredict(Abs_NSW.final, terms = "DistAgriLand")
+preds.Abs_NSW.Rain1 = ggpredict(Abs_NSW.final, terms = "A_Psea_Avg30Yr")
+preds.Abs_NSW.Rain2 = ggpredict(Abs_NSW.final, terms = "A_Prec_Avg30Yr")
+preds.Abs_NSW.Temp1 = ggpredict(Abs_NSW.final, terms = "A_TSea_Avg30Yr")
+preds.Abs_NSW.Temp2 = ggpredict(Abs_NSW.final, terms = "A_TAvg_Avg30Yr")
+
+# Individual plot for month
+p.Abs_NSW1 = ggplot(data = preds.Abs_NSW.Month) + 
+  geom_point(aes(x, y = predicted), size = 2) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Month", y = "Abundance", title = "") +
+  scale_x_discrete(label = xticks) + 
+  theme_customized()
+#p.Abs_NSW1
+
+#Individual plot for farm
+p.Abs_NSW2 = ggplot(data = preds.Abs_NSW.Farm) + 
+  geom_point(data = Abund_NSW, aes(x = DistAgriLand, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, x, y = predicted), alpha = 0.2) + 
+  geom_text(x = 10, y = 50, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NSW$DistAgriLand, y = Abund_NSW$Abundance.2, df = Abund_NSW)) + 
+  labs(x = "Distance to Farm (m)", y = "Abundance", title = "") + 
+  theme_customized()
+#p.Abs_NSW2
+
+#Individual plot for temperature seasonality
+p.Abs_NSW3 = ggplot(data = preds.Abs_NSW.Temp1) + 
+  geom_point(data = Abund_NSW, aes(x = A_TSea_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x = x, y = predicted)) + 
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, x, y = predicted), alpha = 0.2) + 
+  geom_text(x = 500, y = 75, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NSW$A_TSea_Avg30Yr, y = Abund_NSW$Abundance.2, df = Abund_NSW)) +
+  labs(x = "Temperature Seasonality", y = "Abundance") + 
+  theme_customized()
+#p.Abs_NSW3
+
+#Individual plot of percipitation seasonality
+p.Abs_NSW4 = ggplot(data = preds.Abs_NSW.Rain1) + 
+  geom_point(data = Abund_NSW, aes(x = A_Psea_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, x, y = predicted), alpha = 0.2) + 
+  geom_text(x = 40, y = 250, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NSW$A_Psea_Avg30Yr, y = Abund_NSW$Abundance.2, df = Abund_NSW)) +
+  labs(x = "Percipitation Seasonality", y = "Abundance") + 
+  theme_customized()
+#p.Abs_NSW4
+
+#Individual plot for temperature
+p.Abs_NSW5 = ggplot(data = preds.Abs_NSW.Temp2) + 
+  geom_point(data = Abund_NSW, aes(x = A_TAvg_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, x, y = predicted), alpha = 0.2) + 
+  geom_text(x = 12.5, y = 2e+06, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NSW$A_TAvg_Avg30Yr, y = Abund_NSW$Abundance.2, df = Abund_NSW)) +
+  labs(x = xlab, y = "Abundance") + 
+  theme_customized()
+#p.Abs_NSW5
+
+#Individual plot for precipitation
+p.Abs_NSW6 = ggplot(data = preds.Abs_NSW.Rain2) + 
+  geom_point(data = Abund_NSW, aes(x = A_Prec_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, x, y = predicted), alpha = 0.2) + 
+  geom_text(x = 600, y = 100, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NSW$A_Prec_Avg30Yr, y = Abund_NSW$Abundance.2, df = Abund_NSW)) +
+  labs(x = "Precipitation (mL)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_NSW6
+
+#Create combined plots
+p.Abs_NSWa = (p.Abs_NSW5 | p.Abs_NSW6)/(p.Abs_NSW3 | p.Abs_NSW4)
+p.Abs_NSWa = p.Abs_NSWa + plot_annotation(tag_levels = "A", tag_suffix = ")", tag_prefix = "(")
+p.Abs_NSWa
+#ggsave("Abundance NSWa.png")
+
+p.Abs_NSWb = (p.Abs_NSW2 / p.Abs_NSW1)
+p.Abs_NSWb = p.Abs_NSWb + plot_annotation(tag_levels = "A", tag_suffix = ")", tag_prefix = "(")
+p.Abs_NSWb
+#ggsave("Abundance NSWb.png")
+```
+
+This concludes the New South Wales section, now I will move on to the Northern Territory
+
+### Northern Territory
+
+First, I will see what vegetation types are in this state
+```{r, NT boxplot}
+Abund_NT$Abundance.2 = Abund_NT$Abundance + 1
+Abund_NT$VegeType = factor(Abund_NT$VegeType, 
+                           levels = c("1", "2", "3", "4", "5", "7", "8", "9", "10", "11", "12"))
+boxplot(Abundance ~ VegeType, data = Abund_NT)
+levels(Abund_NT$VegeType)
+```
+
+The abundance data for the Northern Territory has data on vegetation types 3 (Eucalyptus woodland), 4 (Woodland), 7 (Shrublands), 9 (hummock grassland), and 10 (Saltbushes). 
+
+Now I will move to modelling the data now, as before I will start with a gamma glm.
+```{r, NT model building 1}
+Abs_NT = glm(Abundance.2 ~ A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = Gamma(link = "log"), data = Abund_NT)
+summary(Abs_NT)
+```
+
+**A_TSean_Avg30Yr** and **DistAgriLand** x **VegeType** coefficents are alised so they were removed from the model, **DistAgriLand** and **VegeType** were added in additively and the model was re-fitted. 
+```{r, NT model building 2}
+Abs_NT2 = glm(Abundance.2 ~ A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + 
+              A_Psea_Avg30Yr, family = Gamma(link = "log"), data = Abund_NT)
+summary(Abs_NT2)
+```
+
+There are now no alised coefficents so I will move on to running model diagnostics to check the assumptions of the glm.
+```{r, NT model diagnostics 1}
+par(mfrow = c(2,2))
+plot(Abs_NT2, which = c(1,3,4))
+plot(resid(Abs_NT2, type = "deviance"))
+```
+
+The residuals of the model look adequately independent, deviances look homogenous, no non-linear trends look apparent in the residuals and there are likely no influential or extreme residuals. As there was non-significant terms in the model I will now do model selection
+```{r, NT model selection 1}
+drop1(Abs_NT2, test = "Chisq")
+```
+
+The only non-significant term in the model was **PercSoilClay**, as such it was removed from the model and the model was re-fitted. 
+```{r, NT model selection 2}
+Abs_NT3 = update(Abs_NT2, drop.terms(Abs_NT2$terms, 7, keep.response = TRUE))
+drop1(Abs_NT3, test = "Chisq")
+```
+
+All terms in the model are now significant, as such it will be used as the final model with diagnostics and final analysis done on it. 
+```{r, NT final model}
+Abs_NT.final = Abs_NT3
+summary(Abs_NT.final)
+anova(Abs_NT.final, test = "Chisq")
+Gam_disp(Abs_NT.final)
+par(mfrow = c(2,2))
+plot(Abs_NT.final, which = c(1,3,4))
+plot(resid(Abs_NT.final, type = "deviance"))
+abline(h = 0, col = 2, lwd = 2, lty = 2)
+```
+
+All model assumptions appeared satisfied, dispersion estimated from the residual gamma distribution is 0.89 whichis an underestimate from what is impled by the summary and resid.dev/resid.df values. **DistPermWater** is not significant in the Anode table but this is likely due to the Anode table uses type III sequential term deletions whilst the drop1 Anode table uses type II fixed term deletions.
+
+Now I will move on to plotting the predictions of the model. 
+```{r, NT model predictions}
+#Create the predictions
+preds.Abs_NT.Month = ggpredict(Abs_NT.final, terms = "Month")
+preds.Abs_NT.Vege = ggpredict(Abs_NT.final, terms = "VegeType")
+preds.Abs_NT.Rain1 = ggpredict(Abs_NT.final, terms = "A_Prec_Avg30Yr")
+preds.Abs_NT.Temp = ggpredict(Abs_NT.final, terms = "A_TAvg_Avg30Yr")
+preds.Abs_NT.Water = ggpredict(Abs_NT.final, terms = "DistPermWater")
+preds.Abs_NT.Farm = ggpredict(Abs_NT.final, terms = "DistAgriLand")
+preds.Abs_NT.Day = ggpredict(Abs_NT.final, terms = "VarDayLength")
+preds.Abs_NT.Rain2 = ggpredict(Abs_NT.final, terms = "A_Psea_Avg30Yr")
+
+#Individual plot for month
+p.Abs_NT1 = ggplot(data = preds.Abs_NT.Month) + 
+  geom_point(aes(x, y = predicted), size = 2) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Month of Year", y = "Abundance") + 
+  scale_x_discrete(label = xticks) + 
+  theme_customized()
+#p.Abs_NT1
+
+#Create individual plot for VegeType
+xticks2 = c( "Eucalyptus\nWoodland", "Woodlands", "Shrublands", 
+            "Hummock\nGrassland", "Saltbushes")
+p.Abs_NT2 = ggplot(data = preds.Abs_NT.Vege) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Vegetaion Type", y = "Abundance") + 
+  scale_x_discrete(label = xticks2) + 
+  theme_customized()
+#p.Abs_NT2
+
+#Create an individual plot for precipitation
+p.Abs_NT3 = ggplot(data = preds.Abs_NT.Rain1) + 
+  geom_point(data = Abund_NT, aes(x = A_Prec_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 260, y = 2e+36, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NT$A_Prec_Avg30Yr, y = Abund_NT$Abundance.2, df = Abund_NT)) + 
+  labs(x = "Precipitation (mL)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_NT3
+
+#Create Individual plot for temperature
+p.Abs_NT4 = ggplot(data = preds.Abs_NT.Temp) + 
+  geom_point(data = Abund_NT, aes(x = A_TAvg_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_text(x = 22, y = 2e+26, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NT$A_TAvg_Avg30Yr, y = Abund_NT$Abundance.2, df = Abund_NT)) + 
+  labs(x = xlab, y = "Abundance") + 
+  theme_customized()
+#p.Abs_NT4
+ 
+#Create an individual plot for water
+p.Abs_NT5 = ggplot(data = preds.Abs_NT.Water) + 
+  geom_point(data = Abund_NT, aes(x = DistPermWater, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 20, y = 5e+10, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NT$DistPermWater, y = Abund_NT$Abundance.2, df = Abund_NT)) + 
+  labs(x = "Distance to water Feature (m)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_NT5
+
+#Create an individual plot for farm
+p.Abs_NT6 = ggplot(data = preds.Abs_NT.Farm) + 
+  geom_point(data = Abund_NT, aes(x = DistAgriLand, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 600, y = 1e+30, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NT$DistAgriLand, y = Abund_NT$Abundance.2, df = Abund_NT)) + 
+  labs(x = "Distance to Farm (m)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_NT6
+
+#Create individual plot for variation in day length
+p.Abs_NT7 = ggplot(data = preds.Abs_NT.Day) + 
+  geom_point(data = Abund_NT, aes(x = VarDayLength, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 1, y = 5e+30, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NT$VarDayLength, y = Abund_NT$Abundance.2, df = Abund_NT)) + 
+  labs(x = "Variability in Day Length (hrs)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_NT7
+
+#Create Individual plot for precipitation seasonality
+p.Abs_NT8 = ggplot(data = preds.Abs_NT.Rain2) + 
+  geom_point(data = Abund_NT, aes(x = A_Psea_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 55, y = 1e+36, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NT$A_Psea_Avg30Yr, Abund_NT$Abundance.2, df = Abund_NT)) + 
+  labs(x = "Precipitation Seasonality", y = "Abundance") + 
+  theme_customized()
+#p.Abs_NT8
+
+#Create combined plots
+p.Abs_NTa = (p.Abs_NT1 / p.Abs_NT2)
+p.Abs_NTa = p.Abs_NTa + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.Abs_NTa
+#ggsave("Abundance NTa.png")
+
+p.Abs_NTb = (p.Abs_NT3 | p.Abs_NT4)/(p.Abs_NT8)
+p.Abs_NTb = p.Abs_NTb + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.Abs_NTb
+#ggsave("Abundance NTb.png")
+
+p.Abs_NTc = (p.Abs_NT5 | p.Abs_NT6)/(p.Abs_NT7)
+p.Abs_NTc = p.Abs_NTc + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.Abs_NTc
+#ggsave("Abundnace NTc.png")
+```
+
+The dotplots are hard to interpret but the scatter plots suggests the model has drawn spurious correlations as the fitted lines are flat. Next, I will move on to analysing the Queensland abundance data.
+
+### Queensland
+
+First, I will create the transformed **Abundance.2** variable and create a boxplot to see what vegetation types are in the data for this state. 
+```{r, QLD boxplot}
+Abund_QLD$Abundance.2 = Abund_QLD$Abundance + 1
+boxplot(Abundance.2 ~ VegeType, data = Abund_QLD)
+```
+
+The Queensland data only have vegetation data on Eucalyptus woodland, Tussock grassland, Hummock grassland and Closed/Naturally bare land. 
+
+Now for statistical modelling
+```{r, QLD model building 1}
+Abs_QLD = glm(Abundance.2 ~ A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = Gamma(link = "log"), data = Abund_QLD)
+summary(Abs_QLD)
+```
+
+The interaction coefficents seem to be alised so the interaction was removed from the model and the model was re-fitted with the terms put in additively. 
+```{r, QLD model building 2}
+Abs_QLD2 = glm(Abundance.2 ~ A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = Gamma(link = "log"), data = Abund_QLD)
+summary(Abs_QLD2)
+```
+
+There are no aliased coefficients so I will move on to checking the model diagnostics
+```{r, QLD model diagnostics 1}
+par(mfrow = c(2,2))
+plot(Abs_QLD2, which = c(1,3,4))
+plot(resid(Abs_QLD2, type = "deviance"))
+abline(h = 0, col = 2, lwd = 2, lty = 2)
+```
+
+The residuals do not look indpendent but all other model diagnostics look okay. I will try adding **Year** to the model as this may capture autocorrelation in the residuals.  
+```{r, QLD model building 3}
+Abs_QLD3 = glm(Abundance.2 ~ A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + Year +
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = Gamma(link = "log"), data = Abund_QLD)
+summary(Abs_QLD3)
+par(mfrow = c(1,2))
+plot(resid(Abs_QLD3))
+plot(resid(Abs_QLD2))
+
+```
+
+This imporved the residuals independence somewhat, next I will try adding **Day** to the model to see if this further improves residual indepednence. 
+```{r, QLD model building 4}
+Abs_QLD4 = glm(Abundance.2 ~ A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + Year + Day + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = Gamma(link = "log"), data = Abund_QLD)
+summary(Abs_QLD4)
+par(mfrow = c(1,2))
+plot(resid(Abs_QLD4))
+plot(resid(Abs_QLD3))
+
+```
+
+Adding **Day** did not improve the model residuals, I will also not include **Year** as the change in residuals is negligble. I tried fitting a Gamma glmm and a Gamma gee but the models were rank deficent and did not run with any predictors in the model. 
+
+```{r, QLD model building 4}
+#Abs_QLD5 = gee(Abundance.2 ~ A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + A_TSea_Avg30Yr + 
+#              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr,
+#              id = Transect_Sample, corstr = "AR-M", Mv = 2, family = Gamma(link = "log"), data = Abund_QLD)
+#summary(Abs_QLD5)
+```
+
+
+I will move on to analysing the Victoria dataset. 
+
+### Victoria
+
+First the boxplot of **VegeType**
+```{r, VIC}
+Abund_VIC$Abundance.2 = Abund_VIC$Abundance + 1
+boxplot(Abundance.2 ~ VegeType, data = Abund_VIC)
+```
+
+The Victoria abundance data has information on Eucalyptus forests, Eucalyptus woodland, Woodlands, Shrubland, Cleared/Naturally bare and water habitats. Now for the statistical modelling
+```{r, VIC model building 1}
+Abs_VIC = glm(Abundance.2 ~ A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + A_TSea_Avg30Yr +
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr, 
+              family = Gamma(link = "log"), data = Abund_VIC)
+summary(Abs_VIC)
+```
+
+There are aliased coefficents in the interaction between **DistAgriLand** and **VegeType** so the interaction was removed from the model and the term added in additively. 
+```{r, VIC model building 2}
+Abs_VIC2 = glm(Abundance.2 ~ A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + A_TSea_Avg30Yr +
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr, 
+              family = Gamma(link = "log"), data = Abund_VIC)
+summary(Abs_VIC2)
+```
+
+There are no aliased coefficents so I will now check the model diagnostics. 
+```{r, VIC model diagnostics 1}
+par(mfrow = c(2,2))
+plot(Abs_VIC2, which = c(1,3,4))
+plot(resid(Abs_VIC2, type = "deviance"))
+abline(h = 0, col = 2, lwd = 2, lty = 2)
+```
+
+The model diagnostics look acceptable with homogeneous and no trend in residuals, no influential or extreme residuals and the residuals look independent. Now I will make plots of the model predictions
+```{r, VIC model predictions}
+# Create the predictions
+preds.Abs_VIC.Month = ggpredict(Abs_VIC2, terms = "Month")
+preds.Abs_VIC.Vege = ggpredict(Abs_VIC2, terms = "VegeType")
+preds.Abs_VIC.Rain1 = ggpredict(Abs_VIC2, terms = "A_Prec_Avg30Yr")
+preds.Abs_VIC.Rain2 = ggpredict(Abs_VIC2, terms = "A_Psea_Avg30Yr")
+preds.Abs_VIC.Temp1 = ggpredict(Abs_VIC2, terms = "A_TAvg_Avg30Yr")
+preds.Abs_VIC.Temp2 = ggpredict(Abs_VIC2, terms = "A_TSea_Avg30Yr")
+preds.Abs_VIC.Farm = ggpredict(Abs_VIC2, terms = "DistAgriLand")
+preds.Abs_VIC.Water = ggpredict(Abs_VIC2, terms = "DistPermWater")
+preds.Abs_VIC.Day = ggpredict(Abs_VIC2, terms = "VarDayLength")
+preds.Abs_VIC.Soil = ggpredict(Abs_VIC2, terms = "PercSoilClay")
+
+# Individual plot for Month
+p.Abs_VIC1 = ggplot(data = preds.Abs_VIC.Month) + 
+  geom_point(aes(x, y = predicted), size = 2) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Month", y = "Abundance") + 
+  scale_x_discrete(label = xticks) + 
+  theme_customized()
+#p.Abs_VIC1
+
+# Individual plot for Vegetation type
+xticks2b = c("Eucalyptus\nForest", "Eucalyptus\nWoodland", "Woodland", "Shrubland", 
+             "Cleared/Naturally\nBare", "Water")
+p.Abs_VIC2 = ggplot(data = preds.Abs_VIC.Vege) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) +
+  labs(x = "Vegetation Type", y = "Abundance") + 
+  scale_x_discrete(label = xticks2b) + 
+  theme_customized()
+#p.Abs_VIC2
+
+# Individual plot for precipitation 
+p.Abs_VIC3 = ggplot(data = preds.Abs_VIC.Rain1) + 
+  geom_point(data = Abund_VIC, aes(x = A_Prec_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 600, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund_NT$A_Prec_Avg30Yr, Abund_NT$Abundance.2, df = Abund_NT)) + 
+  labs(x = "Precipitation Seasonality", y = "Abundance") + 
+  theme_customized()
+#p.Abs_VIC3
+
+# Individual plot for temperature
+p.Abs_VIC4 = ggplot(data = preds.Abs_VIC.Temp1) + 
+  geom_point(data = Abund_VIC, aes(x = A_TAvg_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 15, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund_VIC$A_TAvg_Avg30Yr, Abund_VIC$Abundance.2, df = Abund_VIC)) + 
+  labs(x = xlab, y = "Abundance") + 
+  theme_customized()
+#p.Abs_VIC4
+
+# Individual plot for precipitation seasonality
+p.Abs_VIC5 = ggplot(data = preds.Abs_VIC.Rain2) + 
+  geom_point(data = Abund_VIC, aes(x = A_Psea_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 30, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund_VIC$A_Psea_Avg30Yr, y = Abund_VIC$Abundance.2, df = Abund_VIC)) + 
+  labs(x = "Variability in Precipiation", y = "Abundance") + 
+  theme_customized()
+#p.Abs_VIC5
+
+# Individual plot for temperature seasonality
+p.Abs_VIC6 = ggplot(data = preds.Abs_VIC.Temp2) + 
+  geom_point(data = Abund_VIC, aes(x = A_TSea_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_text(x = 450, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund_VIC$A_TSea_Avg30Yr, y = Abund_VIC$Abundance.2, df = Abund_VIC)) + 
+  labs(x = "Variablity in Temperature", y = "Abundance") + 
+  theme_customized()
+#p.Abs_VIC6
+
+# Individual plot for distance to nearest farm
+p.Abs_VIC7 = ggplot(data = preds.Abs_VIC.Farm) + 
+  geom_point(data = Abund_VIC, aes(x = DistAgriLand, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 12, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund_VIC$DistAgriLand, y = Abund_VIC$Abundance.2, df = Abund_VIC)) + 
+  labs(x = "Distance to Nearest Farm (m) ", y = "Abundance") + 
+  theme_customized()
+#p.Abs_VIC7
+
+# Individual plot for distance to nearest water feature
+p.Abs_VIC8 = ggplot(data = preds.Abs_VIC.Water) + 
+  geom_point(data = Abund_VIC, aes(x = DistPermWater, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_text(x = 12, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund_VIC$DistPermWater, y = Abund_VIC$Abundance.2, df = Abund_VIC)) + 
+  labs(x = "Distance to Nearest\nWater Feature (m)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_VIC8
+
+# Individual plot for variation in day length
+p.Abs_VIC9 = ggplot(data = preds.Abs_VIC.Day) + 
+  geom_point(data = Abund_VIC, aes(x = VarDayLength, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 3.0, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund_VIC$VarDayLength, y = Abund_VIC$Abundance.2, df = Abund_VIC)) + 
+  labs(x = "Variation in Day Length (hrs)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_VIC9
+
+# Individual plot for percentage of clay in soil
+p.Abs_VIC10 = ggplot(data = preds.Abs_VIC.Soil) + 
+  geom_point(data = Abund_VIC, aes(x = PercSoilClay, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 30, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund_VIC$PercSoilClay, y = Abund_VIC$Abundance.2, df = Abund_VIC)) + 
+  labs(x = "Percent of Clay in Soil (%)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_VIC10
+
+# Create combined plots
+p.Abs_VICa = (p.Abs_VIC1 / p.Abs_VIC2)
+p.Abs_VICa = p.Abs_VICa + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.Abs_VICa
+#ggsave("Abundance VICa.png")
+
+p.Abs_VICb = (p.Abs_VIC3 | p.Abs_VIC5)/(p.Abs_VIC4 | p.Abs_VIC6)
+p.Abs_VICb = p.Abs_VICb + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.Abs_VICb
+#ggsave("Abundance VICb.png")
+
+p.Abs_VICc = (p.Abs_VIC7 | p.Abs_VIC8)/(p.Abs_VIC9 | p.Abs_VIC10)
+p.Abs_VICc = p.Abs_VICc + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.Abs_VICc
+#ggsave("Abundance VICc.png")
+```
+
+This Concludes the analysis section for the state of Victoria. 
+
+### Western Australia
+
+First, as usual I will check to see what vegetation types the Abundance data for Western Australia has using a boxplot and transform the **Abundance** variable. 
+```{r, WA boxplot}
+Abund_WA$Abundance.2 = Abund_WA$Abundance + 1
+Abund_WA$DistAgriLand_ln = log(Abund_WA$DistAgriLand + 1)
+boxplot(Abundance.2 ~ VegeType, data = Abund_WA)
+```
+
+The abundance data for Western Australia only has information for Eucalyptus forests, Eucalyptus woodlands, Woodlands, Swamps/Marshes/Magroves, Shrubland, Saltbushes and Cleared/Naturally bare habitats. 
+
+Next, I will move on to the statistical analysis where I will first fit a gamma glm. 
+```{r, WA model building 1}
+Abs_WA = glm(Abundance.2 ~ DistPermWater + DistAgriLand_ln*VegeType + VarDayLength + 
+               PercSoilClay + Month, family = Gamma(link = "log"), data = Abund_WA)
+summary(Abs_WA)
+```
+
+There are no aliased coefficents in the model so I will now run diagnostic plots of the model. 
+```{r, WA model diagnostics 1}
+par(mfrow = c(2,2))
+plot(Abs_WA, which = c(1,3,4))
+plot(resid(Abs_WA, type = "deviance"))
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+```
+
+The model assumptions look adequately met with homogeneous dispersion, no trend in residuals, no extreme or influential residuals and fairly independent residuals. I will now do final model analysis.
+```{r, WA model analysis}
+anova(Abs_WA, test = "Chisq")
+Gam_disp(Abs_WA)
+```
+
+Now I will plot the model predictions for the interaction to make sure it can be interpreted, as I have an interaction to plot when specifying the *terms* arguement in *ggeffects()* I need to include the names of both interacting variables. 
+```{r, WA model predictions}
+preds.Abs_WA.VegFarm = ggpredict(Abs_WA, terms = c("DistAgriLand_ln", "VegeType"))
+p.Abs_WA1 = ggplot(data = preds.Abs_WA.VegFarm) + 
+  geom_point(data = Abund_WA, aes(x = DistAgriLand_ln, y = Abundance.2)) + 
+  facet_wrap(~ group, nrow = 2) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.01) + 
+  labs(x = "Distance to Nearest Farm (m)", y = "Abundance", colour = "Vegetation\nType") + 
+  theme_customized()
+p.Abs_WA1
+```
+
+The trend appears identical in all vegetation types suggesting that the interaction is not justified in this model. I therefore removed it from the model and put the interacting terms in additively. 
+```{r, WA model building 2}
+Abs_WA2 = glm(Abundance.2 ~ DistPermWater + DistAgriLand + VegeType + VarDayLength + 
+               PercSoilClay + Month, family = Gamma(link = "log"), data = Abund_WA)
+summary(Abs_WA2)
+```
+
+Now to check model assumptions
+```{r, WA model diagnostics 1}
+par(mfrow = c(2,2))
+plot(Abs_WA2, which = c(1,3,4))
+plot(resid(Abs_WA2, type = "deviance"))
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+```
+
+Model assumptions are still adequately met so this could be the final model. Next, model analysis
+```{r, WA model analysis 2}
+anova(Abs_WA2, test = "Chisq")
+drop1(Abs_WA2, test = "Chisq")
+Gam_disp(Abs_WA2)
+```
+
+Finally, model predictions. 
+```{r, WA model predictions 2}
+#Create the predictions
+preds.Abs_WA.Month = ggpredict(Abs_WA2, terms = "Month")
+preds.Abs_WA.Vege = ggpredict(Abs_WA2, terms = "VegeType")
+preds.Abs_WA.Farm = ggpredict(Abs_WA2, terms = "DistAgriLand")
+preds.Abs_WA.Water = ggeffect(Abs_WA2, terms = "DistPermWater")
+preds.Abs_WA.Day = ggpredict(Abs_WA2, terms = "VarDayLength")
+preds.Abs_WA.Soil = ggpredict(Abs_WA2, terms = "PercSoilClay")
+
+#Individual plot for month
+p.Abs_WA2 = ggplot(data = preds.Abs_WA.Month) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Month", y = "Abundance") + 
+  scale_x_discrete(label = xticks) +
+  theme_customized()
+#p.Abs_WA2
+
+#Individual plot for vegetation type
+xticks2c = c("Eucalyptus\nForest", "Eucalyptus\nWoodland", "Woodland", "Swamps/Marshes/\nMangroves", 
+             "Shrubland", "Saltbushes", "Cleared/Naturally\nBare")
+p.Abs_WA3 = ggplot(data = preds.Abs_WA.Vege) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Vegetation Type", y = "Abundance") + 
+  scale_x_discrete(label = xticks2c) + 
+  theme_customized()
+#p.Abs_WA3
+
+#Individual plot for distance to nearest farm
+p.Abs_WA4 = ggplot(data = preds.Abs_WA.Farm) + 
+  geom_point(data = Abund_WA, aes(x = DistAgriLand, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 150, y = 150, parse = TRUE, 
+            label = Gam_eqn(x = Abund_WA$DistAgriLand, y = Abund_WA$Abundance.2, df = Abund_WA)) + 
+  labs(x = "Distance to Nearest Farm (km)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_WA4
+
+#Individual plot for distance to nearest permanent water feature
+p.Abs_WA5 = ggplot(data = preds.Abs_WA.Water) + 
+  geom_point(data = Abund_WA, aes(x = DistPermWater, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 20, y = 150, parse = TRUE, 
+            label = Gam_eqn(x = Abund_WA$DistPermWater, y = Abund_WA$Abundance.2, df = Abund_WA)) + 
+  labs(x = "Distance to Nearest Water\nFeature (km)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_WA5
+
+#Individual plot for variation in day length
+p.Abs_WA6 = ggplot(data = preds.Abs_WA.Day) + 
+  geom_point(data = Abund_WA, aes(x = VarDayLength, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 1.8, y = 150, parse = TRUE, 
+            label = Gam_eqn(x = Abund_WA$VarDayLength, y = Abund_WA$Abundance.2, df = Abund_WA)) + 
+  labs(x = "Variability in Day Length (hrs)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_WA6
+
+#Individual plot for percentage clay in soil
+p.Abs_WA7 = ggplot(data = preds.Abs_WA.Soil) + 
+  geom_point(data = Abund_WA, aes(x = PercSoilClay, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 18, y = 150, parse = TRUE, 
+            label = Gam_eqn(x = Abund_WA$PercSoilClay, y = Abund_WA$Abundance.2, df = Abund_WA)) + 
+  labs(x = "Percentage Clay in Soil (%)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_WA7
+
+#Create combined plots
+p.Abs_WAa = (p.Abs_WA2 / p.Abs_WA3)
+p.Abs_WAa = p.Abs_WAa + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.Abs_WAa
+#ggsave("Abundance WAa.png")
+
+p.Abs_WAb = (p.Abs_WA6 | p.Abs_WA7)/(p.Abs_WA4 | p.Abs_WA5)
+p.Abs_WAb = p.Abs_WAb + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.Abs_WAb
+#ggsave("Abundance WAb.png")
+```
+
+This concludes the analysis for Western Australia. 
+
+### Australia
+
+I will first check to make sure that all vegetation types are present in the Australia but also transform **Abundance** so I can fit a gamma glm. 
+```{r, AUS boxplot}
+Abund$Abundance.2 = Abund$Abundance + 1
+boxplot(Abundance.2 ~ VegeType, data = Abund)
+```
+
+All 11 vegetation types are indeed present so I will proceed with the analysis. 
+```{r, AUS model building 1}
+Abs_AUS = glm(Abundance.2 ~ A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = Gamma(link = "log"), data = Abund)
+summary(Abs_AUS)
+drop1(Abs_AUS, test = "Chisq")
+```
+
+The interaction term is significant so I will plot the model predictions for it to make sure it is meaningful.
+```{r, AUS model predictions 1}
+preds.Abs_AUS.VegeFarm = ggpredict(Abs_AUS, terms = c("DistAgriLand", "VegeType"))
+p.Abs_AUS.VegeFarm = ggplot(data = preds.Abs_AUS.VegeFarm) + 
+  geom_point(data = Abund, aes(x = DistAgriLand, y = Abundance.2)) + 
+  facet_wrap(~ group, nrow = 2) + 
+  geom_line(aes(x, y = predicted, colour = group)) + 
+  geom_ribbon(aes(x, y = predicted, colour = group, 
+                  ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  labs(x = "Distance to Nearest Farm (km)", y = "Abundance") + 
+  theme_customized()
+p.Abs_AUS.VegeFarm
+```
+
+The predictions of abundance are unrealistic and clearly there is an error and there does not appear to be an interaction trend. As such I will remove the interaction from the model and re-fit it with the interacting terms included additively
+```{r, AUS model building 2}
+Abs_AUS2 = glm(Abundance.2 ~ A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = Gamma(link = "log"), data = Abund)
+summary(Abs_AUS2)
+drop1(Abs_AUS2, test = "Chisq")
+```
+
+Now I will check the model assumptions
+```{r, AUS model diagnostics}
+par(mfrow = c(2,2))
+plot(Abs_AUS2, which = c(1,3,4))
+plot(resid(Abs_AUS2, type = "deviance"))
+abline(h = 0, lty = 2, col = 2, lwd = 2)
+```
+
+The model assumptions look adequately met so I will move on to plotting the predictions of the model. 
+```{r, AUS model predictions}
+#Create the predictions
+preds.Abs_AUS.Month = ggpredict(Abs_AUS2, terms = "Month")
+preds.Abs_AUS.Vege = ggpredict(Abs_AUS2, terms = "VegeType")
+preds.Abs_AUS.Rain1 = ggpredict(Abs_AUS2, terms = "A_Prec_Avg30Yr")
+preds.Abs_AUS.Temp1 = ggpredict(Abs_AUS2, terms = "A_TAvg_Avg30Yr")
+preds.Abs_AUS.Farm = ggpredict(Abs_AUS2, terms = "DistAgriLand")
+preds.Abs_AUS.Water = ggpredict(Abs_AUS2, terms = "DistPermWater")
+preds.Abs_AUS.Day = ggpredict(Abs_AUS2, terms = "VarDayLength")
+preds.Abs_AUS.Soil = ggpredict(Abs_AUS2, terms = "PercSoilClay")
+preds.Abs_AUS.Rain2 = ggpredict(Abs_AUS2, terms = "A_Psea_Avg30Yr")
+preds.Abs_AUS.Temp2 = ggpredict(Abs_AUS2, terms = "A_TSea_Avg30Yr")
+
+#Individual plot for month
+p.Abs_AUS1 = ggplot(data = preds.Abs_AUS.Month) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Month", y = "Abundance") + 
+  scale_x_discrete(label = xticks) + 
+  theme_customized()
+#p.Abs_AUS1
+
+#Individual plot for vegetation type
+xticksd = c("Rain Forest &\nVine Thickets", "Eucalyptus\nForest", "Eucalyptus\nWoodland", "Woodland", 
+            "Swamps &\n Salt Marshes &\nMangroves", "Shrublands", "Tussock\nGrassland", "Hummock\nGrassland", 
+            "Saltbushes", "Closed &\nNaturally Bare", "Water")
+p.Abs_AUS2 = ggplot(data = preds.Abs_AUS.Vege) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Vegetation Type", y = "Abundance") + 
+  scale_x_discrete(label = xticksd) + 
+  theme_customized() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+#p.Abs_AUS2
+
+#Individual plot for precipitation 
+p.Abs_AUS3 = ggplot(data = preds.Abs_AUS.Rain1) + 
+  geom_point(data = Abund, aes(x = A_Prec_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 725, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund$A_Prec_Avg30Yr, y = Abund$Abundance.2, df = Abund)) + 
+  labs(x = "Precipiation (mL)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_AUS3
+
+#Individual plot for temperature
+p.Abs_AUS4 = ggplot(data = preds.Abs_AUS.Temp1) + 
+  geom_point(data = Abund, aes(x = A_TAvg_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 15, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund$A_TAvg_Avg30Yr, y = Abund$Abundance.2, df = Abund)) + 
+  labs(x = xlab, y = "Abundance") + 
+  theme_customized()
+#p.Abs_AUS4
+
+#Individual plot for distance to nearest farm
+p.Abs_AUS5 = ggplot(data = preds.Abs_AUS.Farm) + 
+  geom_point(data = Abund, aes(x = DistAgriLand, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 250, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund$DistAgriLand, y = Abund$Abundance.2, df = Abund)) + 
+  labs(x = "Distance to Nearest\nFarm (km)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_AUS5
+
+#Individual plot for distance to nearest permanent water feature
+p.Abs_AUS6 = ggplot(data = preds.Abs_AUS.Water) + 
+  geom_point(data = Abund, aes(x = DistPermWater, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 25, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund$DistPermWater, y = Abund$Abundance.2, df = Abund)) + 
+  labs(x = "Distance to Nearest\nWater Feature (km)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_AUS6
+
+#Individual plot for variation in day length
+p.Abs_AUS7 = ggplot(data = preds.Abs_AUS.Day) + 
+  geom_point(data = Abund, aes(x = VarDayLength, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 2.5, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund$VarDayLength, y = Abund$Abundance.2, df = Abund)) + 
+  labs(x = "Variability in Day Length (hrs)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_AUS7
+
+#Individual plot for percentage clay in soil
+p.Abs_AUS8 = ggplot(data = preds.Abs_AUS.Soil) + 
+  geom_point(data = Abund, aes(x = PercSoilClay, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 20, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund$PercSoilClay, y = Abund$Abundance.2, df = Abund)) + 
+  labs(x = "Percentage Clay in Soil (%)", y = "Abundance") + 
+  theme_customized()
+#p.Abs_AUS8
+
+#Individual plot for precipitation seasonality
+p.Abs_AUS9 = ggplot(data = preds.Abs_AUS.Rain2) + 
+  geom_point(data = Abund, aes(x = A_Psea_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 40, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund$A_Psea_Avg30Yr, y = Abund$Abundance.2, df = Abund)) + 
+  labs(x = "Precipitation Seasonality", y = "Abundance") + 
+  theme_customized()
+#p.Abs_AUS9
+
+#Individual plot for temperature seasonality
+p.Abs_AUS10 = ggplot(data = preds.Abs_AUS.Temp2) + 
+  geom_point(data = Abund, aes(x = A_TSea_Avg30Yr, y = Abundance.2)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 450, y = 400, parse = TRUE, 
+            label = Gam_eqn(x = Abund$A_TSea_Avg30Yr, y = Abund$Abundance.2, df = Abund)) + 
+  labs(x = "Temperature Seasonality", y = "Abundance") + 
+  theme_customized()
+#p.Abs_AUS10
+
+#Create combined plots
+p.AUSa = (p.Abs_AUS1 / p.Abs_AUS2)
+p.AUSa = p.AUSa + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.AUSa
+#ggsave("Abundance AUSa.png")
+
+p.AUSb = (p.Abs_AUS3 | p.Abs_AUS4)/(p.Abs_AUS9 | p.Abs_AUS10)
+p.AUSb = p.AUSb + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.AUSb
+#ggsave("Abundance AUSb.png")
+
+p.AUSc = (p.Abs_AUS5 | p.Abs_AUS6)/(p.Abs_AUS7 | p.Abs_AUS8)
+p.AUSc = p.AUSc + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.AUSc
+#ggsave("Abundance AUSc.png")
+```
+
+This concludes the Australian wide analysis, I will now move on to the transect level analysis
+
+### North-South Transects
+
+First, I will check which vegetation types are found within the North-South transects
+```{r, NS boxplot}
+Abund_NS$Abundance.2 = Abund_NS$Abundance + 1
+boxplot(Abundance.2 ~ VegeType, data = Abund_NS)
+```
+
+The North-South transect data only have information on Eucalyptus forests, Eucalyptus woodlands, Tussock grasslands, and Cleared/Naturally bare land.
+
+Now for the first model, I will first fit a Gamma glmm with **State**, **Transect** and **Transect_sample** as random effects as I am not interested in these variables but want to control for the variation associated with them.
+```{r, NS model building 1}
+Abs_NS1 = glmer(Abundance.2 ~ scale(A_Prec_Avg30Yr) + scale(A_TAvg_Avg30Yr) + scale(DistPermWater) + 
+                  scale(A_TSea_Avg30Yr) + scale(DistAgriLand)*VegeType + scale(VarDayLength) + 
+                  scale(PercSoilClay) + Month + scale(A_Psea_Avg30Yr) + (1|State) + (1|Transect) + 
+                  (1|Transect_Sample), family = Gamma(link = "log"), data = Abund_NS)
+summary(Abs_NS1)
+```
+
+```{r, NS}
+par(mfrow = c(2,3))
+plot(fitted(Abs_NS1) ~ residuals(Abs_NS1))
+plot(cooks.distance(Abs_NS1))
+plot(residuals(Abs_NS1))
+hist(unlist(ranef(Abs_NS1)$Transect_Sample))
+hist(unlist(ranef(Abs_NS1)$Transect))
+hist(unlist(ranef(Abs_NS1)$State))
+```
+
+The model assumptions are adeqautely met and the estimated over-dispersion for the model is approximately 1.16. Note that the model was rank defficent and only **A_Prec_Avg30Yr**, **A_TAvg_Avg30Yr**, **DistPermWater** and **Month** were left in the model and were all significant. 
+```{r, final model analysis}
+Anova(Abs_NS1, type = "III")
+overdisp_fun(Abs_NS1)
+```
+
+This concludes the North-South transect data analysis (I will make the maps in a different section). I will now move on to the East-West Transects.
+
+### East West Transects
+
+As usual, I will first see what vegetation types are in the East-West data. 
+```{r, EW boxplot}
+Abund_EW$Abundance.2 = Abund_EW$Abundance + 1
+boxplot(Abundance.2 ~ VegeType, data = Abund_EW)
+```
+
+The East-West transect data only has information on Rainforest & Vine Thickets, Eucalyptus forests, Woodlands and Cleared/Naturally bare land. 
+
+The first model I fitted was a gamma GLMM with **Transect_Sample**, **State** and **Transect** as random effects
+```{r, EW model building 1}
+Abs_EW1 = glmer(Abundance.2 ~ scale(A_Prec_Avg30Yr) + scale(A_TAvg_Avg30Yr) + scale(DistPermWater) + 
+              scale(DistAgriLand) + scale(VarDayLength) + scale(PercSoilClay) + Month + 
+              scale(A_Psea_Avg30Yr) + scale(A_TSea_Avg30Yr) + (1|State) + (1|Transect) + (1|Transect_Sample), 
+              family = Gamma(link = "log"), data = Abund_EW)
+summary(Abs_EW1)
+```
+
+Note that the model was reank-defficent so 5 coloumns were dropped from the model with only **A_Prec_Avg30Yr**, **A_TAvg_Avg30Yr**, **DistPermWater** and **Month** were left in the model and were all significant. Now for model diagnostic plots.
+```{r, EW diagnostic plots}
+par(mfrow = c(2,3))
+plot(fitted(Abs_EW1) ~ residuals(Abs_EW1))
+plot(cooks.distance(Abs_EW1))
+plot(residuals(Abs_EW1))
+hist(unlist(ranef(Abs_EW1)$Transect_Sample))
+hist(unlist(ranef(Abs_EW1)$Transect))
+hist(unlist(ranef(Abs_EW1)$State))
+```
+
+The residuals look independent with no influential residuals but the dispersion do not look homogenous, likely due to **Month**. 
+```{r, EW model analysis}
+Anova(Abs_EW1, type = "III")
+overdisp_fun(Abs_EW1)
+```
+
+The estimated dispersion coefficent for the model is approximately 1.28 and is significantly different from 0. This concludes the transect level statistical analysis. 

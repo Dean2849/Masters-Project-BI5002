@@ -1,0 +1,2702 @@
+---
+title: "Main-Project-Analysis"
+author: "Dean Wilkinson"
+date: "20/01/2022"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,tidy.opts=list(width.cutoff=30),tidy=TRUE)
+```
+
+## Introduction
+
+In this RMarkdown document I will be doing the analysis of the "Full Rabbit Dataset.csv" constituting the main focus of the project. This data set contains point occurrence counts of invasive European rabbits (*Oryctolagus cuniculus*) in Australia. These point counts were collated from various direct and indirect studies as well as citizen science observations during the time frame 1760 to 2015 and form part of the long term rabbit data set (*Roy-Dufresne et al 2019*). The data set also contained a suit of environmental variables as well as the presence-absence data from the "Species Pseudoabsence Generation.Rmd" document. Finally, various abundance estimates were derived from the data provided by the data base and from the "Estimating Rabbit Abundance.Rmd" document. 
+
+Variable names:
+
+ - **Occurrence.ID**: unique data identifier, numeric
+ - **Lat**: decimal latitude, numeric
+ - **Long**: decimal longitude, numeric
+ - **Occurrences**: number of rabbit occurrences for a given sampling unit, integer
+ - **Abund1**: estimated rabbit abundance from "Estimating Rabbit Abundance.Rmd", numeric
+ - **Abund2**: estimated rabbit abundance from the "S12_DataAbundance" file in "European Rabbit Dataset.zip", numeric
+ - **Abund3**: estimated rabbit abundance derived from **Occurrences** and **No.of.10km.cells**, numeric
+ - **Year**: year the observations were recorded, integer/numeric
+ - **Day**: day of the year the observations were recorded, integer/numeric
+ - **A_Prec_Avg30Yr**: 30 year average of average precipitation, numeric 
+ - **A_Psea_Avg30Yr**: 30 year average of average precipitation seasonality, numeric 
+ - **A_TAvg_Avg30Yr**: 30 year average of average temperature, numeric
+ - **A_TMax_Avg30Yr**: 30 year average of average maximum temperature, numeric
+ - **A_TMin_Avg30Yr**: 30 year average of average minimum temperature, numeric
+ - **A_TSea_Avg30Yr**: 30 year average of average temperature seasonality, numeric
+ - **A_TWet_Avg30Yr**: 30 year average of average temperature in the wettest quarter of the year, numeric
+ - **A_TWrm_Avg30Yr**: 30 year average of average temperature in the warmest quarter of the year, numeric
+ - **A_Prec_AvgAutumn30Yr**: 30 year average of average precipitation in Autumn, numeric
+ - **A_Prec_AvgSummer30Yr**: 30 year average of average precipitation in Summer, numeric
+ - **A_Prec_AvgSpring30Yr**: 30 year average of average precipitation in Spring, numeric
+ - **A_Prec_AvgWinter30Yr**: 30 year average of average precipitation in Winter, numeric
+ - **DistPermWater**: euclidean distance in metres to the nearest permanent water feature, numeric
+ - **DistAgriLand**: euclidean distance in metres to the nearest agricultural land margins, numeric
+ - **PercSoilClay**: the percentage of estimated clay in the soil, numeric
+ - **MinDayLength**: minimum day length in hours, numeric 
+ - **VarDayLength**: variation in day length in hours, numeric
+ - **VegeType**: vegetation type, factor with 13 levels
+ - **Season**: meterological season according to the Australian calendar, factor with 4 levels
+ - **Month**: month of the year, factor with 12 levels
+ - **Diseases**: the number of introduced diseases as biological control for rabbits in a given year, factor with 4 levels
+ - **Red.Fox**: presence/absence of red foxes, factor with 2 levels
+ - **Dingo**: presence/absence of dingoes , factor with 2 levels
+ - **Feral.Cat**: presence/absence of feral cats, factor with 2 levels 
+ - **Whistling.Kite**: presence/absence of whistling kites, factor with 2 levels
+ - **Wallaby.Sp** :presence/absence of a wallaby species, factor with 2 levels
+
+The 13 vegetation types were a re-classification of all the vegetation types in Australia as described by the Environment Department of the Australian Government classification scheme and the original classes can be found at "https://www.awe.gov.au/agriculture-land/land/native-vegetation/national-vegetation-information-system/data-products". The re-classifications used in the data set are found below:
+
+ - 1 = Rainforest and vine thickets
+ - 2 = Eucalyptus forest
+ - 3 = Eucalyptus woodland
+ - 4 = Woodlands
+ - 5 = Seasonal inundated swamps, salt marches and mangroves
+ - 6 = Low closed forests and tall closed shrublands
+ - 7 = Shrublands
+ - 8 = Tussock grasslands
+ - 9 = Hummock grasslands
+ - 10 = Saltbushes
+ - 11 = Cleared vegetation, naturally bare
+ - 12 = Water
+ - 13 = Unclassified/Unknown/Other
+ 
+The factor levels in **Disease** are coded 0-3 with what each number corresponds to below:
+
+ - 0 = no diseases introduced as biological control
+ - 1 = only myxomatosis is the introduced disease
+ - 2 = myxomatosis and rabbit hemorrhagic disease virus 1 (RHDV1) are the only introduced diseases
+ - 3 = myxomatosis, RHDV1 and RHDV2 are the only introduced diseases
+ 
+As **Season** is coded according to the Australian calender the numeric coding of 1-4 represents different seasons than would be the case for a Northern hemisphere nation:
+
+ - 1 = Summer
+ - 2 = Autumn
+ - 3 = Winter
+ - 4 = Spring
+ 
+The state variable refers to the 8 states/territories of Australia coded with their 2/3-letter coding with the full names of each state/territory given below:
+
+ - ACT = Australian Capital Territory
+ - NSW = New South Wales
+ - NT = Northern Territory
+ - QLD = Queensland
+ - SA = South Australia
+ - TAS = Tasmania
+ - VIC = Victoria
+ - Western Australia
+ 
+Finally, in all the animal presence/absence factors 1 represents presences and 0 represents absences.
+
+The aim of the project is to determine the drivers of rabbit occurrence patterns, given the variables in the data set, at different spatial scales and compare the variables that are in each final model. The scales will be on the country scale, state/territory scale and transect scale. The transect scale will consist of random transects sampled from the data on a North-South axis and a East-West axis. 
+
+## R Environment Set Up and Importing the Data
+
+I will start by loading the R packages that I will be using for this analysis.
+```{r, loading required packages}
+library(mgcv)
+library(lme4)
+#library(glmmTMB)
+library(ggplot2)
+library(ggeffects)
+#library(ggcleveland)
+library(GGally)
+library(patchwork)
+library(tidyverse)
+#library(effects)
+#library(AICcmodavg)
+#library(emmeans)
+library(car)
+library(modEvA)
+```
+
+There are also some custom functions that I want to create that will be helpful for graphical data analysis and plotting with **ggplot2**
+```{r, custom functions}
+#Augmented pairs plot
+panel.hist = function(x, ...) {
+  usr = par("usr"); on.exit(par(usr))
+  par(usr = c(usr[1:2], 0, 2.5))
+  hist(x, freq = FALSE, col="cyan", add=TRUE) 
+  lines(density(x))
+}
+panel.cor = function(x, y, digits = 2, prefix = "", cex.cor, ...){
+  usr = par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r = abs(cor(x, y))
+  txt = format(c(r, 0.123456789), digits = digits)[1]
+  txt = paste0(prefix, txt)
+  if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+pairs2 = function (x) {
+  pairs(x, lower.panel = panel.smooth, upper.panel = panel.cor, diag.panel = panel.hist)
+}
+
+#Co-plot panel function
+coplot.ablines = function(x, y, ...){
+  tmp = lm(y ~ x, na.action = na.omit)
+  abline(tmp)
+  points(x, y)
+}
+
+#Custom ggplot theme
+theme_customized = function(base_size = 13, base_family = "", base_line_size = base_size/22, base_rect_size = base_size/22){
+  theme(
+    axis.title = element_text(size = 13),
+    axis.text.x = element_text(size = 10),
+    axis.text.y = element_text(size = 10),
+    plot.caption = element_text(size = 10, face = "italic"),
+    panel.background = element_rect(fill = "white"),
+    axis.line = element_line(size = 1, colour = "black"),
+    strip.background = element_rect(fill = "#cddcdd"),
+    panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+    strip.text = element_text(colour = "black"),
+    legend.key = element_blank()
+  )
+}
+```
+
+I would also like to note that the custom R functions above were provided to me during statistics courses run by Dr Alex Douglas and Dr Thomas Cornulier at the University of Aberdeen. 
+
+Now lets finally import the data
+```{r, importing the Data set}
+Rabbit = read.table("E:/Masters Project/BI5002 (Masters Project)/Invasive European Rabbit Data/Full Rabbit Dataset.csv", 
+                    header = TRUE, stringsAsFactors = TRUE, sep = ",")
+str(Rabbit)
+head(Rabbit, n = 10)
+tail(Rabbit, n = 10)
+```
+
+The factors have not been coded as factors, as such I will need to factorise them but everything else looks okay with the data frame.
+```{r, factorising factors}
+#Factorise the factor
+Rabbit$VegeType = factor(Rabbit$VegeType)
+Rabbit$Season = factor(Rabbit$Season)
+Rabbit$Month = factor(Rabbit$Month, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"))
+Rabbit$Diseases = factor(Rabbit$Diseases)
+Rabbit$Red.Fox = factor(Rabbit$Red.Fox)
+Rabbit$Dingo = factor(Rabbit$Dingo)
+Rabbit$Feral.Cat = factor(Rabbit$Feral.Cat)
+Rabbit$Whistling.Kite = factor(Rabbit$Whistling.Kite)
+Rabbit$Wallaby.Sp = factor(Rabbit$Wallaby.Sp)
+#Re-check the data set
+str(Rabbit)
+summary(Rabbit)
+```
+
+In order to look at the drivers of rabbit occurrences at different scales I need to sub set the data to make new data frames based on these scales. First I will create a subset data frame for each Australian state/territory. I will then name each data frame "Rabbit_state/territory"
+```{r, state level datasets}
+Rabbit_ACT = Rabbit[Rabbit$State == "ACT", ]
+Rabbit_NSW = Rabbit[Rabbit$State == "NSW", ]
+Rabbit_NT = Rabbit[Rabbit$State == "NT", ]
+Rabbit_QLD = Rabbit[Rabbit$State == "QLD", ]
+Rabbit_SA = Rabbit[Rabbit$State == "SA", ]
+Rabbit_TAS = Rabbit[Rabbit$State == "TAS", ]
+Rabbit_VIC = Rabbit[Rabbit$State == "VIC", ]
+Rabbit_WA = Rabbit[Rabbit$State == "WA", ]
+```
+
+A point of note to myself, the Tasmania data set only has 365 observations whilst the other 7 data sets have thousands of observations. This may limit the number of parameters that can be potentially fitted to statistical models for the Tasmania given the number of potential predictors, whereas there should not be any such limitations for the other state/ territory specific data sets. 
+
+Creating the transect-scale data sets will be more tricky. To create the North-South transects I need to randomly sample longitudes given a fixed latitude and to create the East-West transects I need to randomly sample latitudes given a fixed longitude. To create transects of equal sizes the fixed longitudes and fixed latitudes can be within a range that corresponds to a set physical distance measured in metres. 
+
+First, some starting longitudes and latitudes to make the transects from.
+```{r, starting longs and lats}
+#Most Northern and Southern Points
+Long_max = max(Rabbit$Long, na.rm = TRUE)
+Long_min = min(Rabbit$Long, na.rm = TRUE)
+Long_max
+Long_min
+
+#Most Eastern and Western Points
+Lat_min = min(Rabbit$Lat, na.rm = TRUE)
+Lat_max = max(Rabbit$Lat, na.rm = TRUE)
+Lat_min
+Lat_max
+```
+
+As there is only a difference of approximately 40 units between **Long_max** and **Long_min** I will make 8 North-South transects with a difference in longitude of  approximately 5 units. As for latitude there is only a difference of approximately 32 units between **Lat_max** and **Lat_min**, as such I will make 6 East-West transects with a difference in latitude of approximately 5 units. 
+
+Now we can make the transect-level data sets.
+```{r, transect level data sets}
+#North-South Transects
+NS1 = Rabbit[Rabbit$Long == 153.65, ]
+NS2 = Rabbit[Rabbit$Long == 153.65 - 5.00, ]
+NS3 = Rabbit[Rabbit$Long == 153.65 - 10.00, ]
+NS4 = Rabbit[Rabbit$Long == 153.65 - 15.00, ]
+NS5 = Rabbit[Rabbit$Long == 153.65 - 20.00, ]
+NS6 = Rabbit[Rabbit$Long == 153.65 - 25.00, ]
+NS7 = Rabbit[Rabbit$Long == 153.65 - 30.00, ]
+NS8 = Rabbit[Rabbit$Long == 153.65 - 35.00, ]
+NS9 = Rabbit[Rabbit$Long == 113.05, ]
+
+NS = rbind(NS1, NS2, NS3, NS4, NS5, NS6, NS7, NS8, NS9)
+NS = as.data.frame(NS)
+
+#East-West Transects
+EW1 = Rabbit[Rabbit$Lat == -12.35, ]
+EW2 = Rabbit[Rabbit$Lat == -12.35 - 5.00, ]
+EW3 = Rabbit[Rabbit$Lat == -12.35 - 10.00, ]
+EW4 = Rabbit[Rabbit$Lat == -12.35 - 15.00, ]
+EW5 = Rabbit[Rabbit$Lat == -12.35 - 20.00, ]
+EW6 = Rabbit[Rabbit$Lat == -12.35 - 25.00, ]
+EW7 = Rabbit[Rabbit$Lat == -43.49, ]
+
+EW = rbind(EW1, EW2, EW3, EW4, EW5, EW6, EW7)
+EW = as.data.frame(EW)
+```
+
+The transects created about have variable sample sizes with **EW7** only having one observation, regardless we now need to add a **Transect** variable to **NS** and **EW**. Then I will check the data and remove the individual transect data sets to save memory.
+
+```{r, adding Transect Variables}
+#Add Transect Variables
+x = factor(rep(c("a", "b", "c", "d", "e", "f", "g", "h", "i"), 
+               times = c(4, 272, 235, 1511, 282, 12, 7, 28, 2)))
+y = factor(rep(c("a", "b", "c", "d", "e", "f", "g"), 
+               times = c(2, 17, 34, 97, 277, 6322, 1)))
+NS$Transect = x
+EW$Transect = y
+str(NS)
+str(EW)
+
+#Check the Data
+summary(NS)
+summary(EW)
+
+#Remove the transect specific data sets
+rm(EW1, EW2, EW3, EW4, EW5, EW6, EW7)
+rm(NS1, NS2, NS3, NS4, NS5, NS6, NS7, NS8, NS9)
+```
+
+This concludes the "R Environment Set Up and Importing the Data section". Next, we move on to "Initial Graphical Data Exploration and Research Questions". 
+
+## Initial Graphical Data Exploration and Research Questions
+
+In this section I will be making scatter plots, box plots and co-plots of the predictor variables in the various data frames to get a sense of which predictors may vary with **Occurrences**. As I will be making a lot of plots of the same type I will create plotting functions to use in for loops that will speed up the creation of the plots.
+```{r, plotting functions}
+scatterplot_fun = function(data, x, y, na.rm = TRUE){
+  ggplot(data = data, aes(x = .data[[x]], y = .data[[y]])) + 
+    geom_point() + 
+    geom_smooth(method = "loess", se = FALSE, colour = "red") + 
+    theme_classic()
+}
+
+boxplot_fun = function(data, x, y, na.rm = TRUE){
+  ggplot(data = data, aes(x = .data[[x]], y = .data[[y]])) + 
+    geom_boxplot() + 
+    theme_classic()
+}
+boxplot_fun2 = function(data, x, y, z, na.rm = TRUE){
+   ggplot(data = data, aes(x = .data[[x]]*.data[[z]], y = .data[[y]])) + 
+    geom_boxplot() + 
+    theme_classic()
+}
+coplot_fun = function(data, x, y, z, na.rm = TRUE){
+  gg_coplot(data = data, x = .data[[x]], y = .data[[y]], faceting = .data[[z]], loess_family = "symmetric", size = 2) + 
+    theme_classic()
+}
+```
+
+I will start with the Australia scale data set **Rabbit**, where I will plot **Occurences** against **Year** and all the variables that come after this in numerical order. 
+```{r, Rabbit Initial GDE Scatter Plots, warning=FALSE}
+par(mfrow = c(2,3))
+for(i in Rabbit[, 9:26]){
+  print(ggplot(Rabbit, aes(x = i, y = Occurences)) +
+          geom_point()) + theme_classic()
+  Sys.sleep(1)
+}
+```
+
+The data are very bunched together when plotted against occurrence, I will log-transform **Occurences** and re-plot the graphs. 
+```{r, Rabbit Initial GDE Scatter Plots 2, warning=FALSE}
+par(mfrow = c(2,3))
+for(i in Rabbit[, 9:27]){
+  print(ggplot(Rabbit, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+```
+
+The plots produced suggest that year, the precipitation variables and distanced to the edge of the nearest agricultural land may have country wide effects on rabbit occurrences with the other plots suggesting no likely relationships. Next, I will plot boxplots of log(Occurences) against the factor variables. 
+```{r, Rabbit Initial GDE Box Plots, warning=FALSE}
+par(mfrow = c(2,3))
+for(i in Rabbit[, 28:37]){
+  boxplot(log(Occurences) ~ i, data = Rabbit)
+  Sys.sleep(1)
+}
+```
+
+The boxplots suggest there is likely a difference in the number of rabbit occurrences according to **State**, **Vegetype**, **Season** and **Month**. The other variables also likely have differences in rabbit occurences but I am sceptical of what they are showing. The boxplot for **Diseases** suggests that the number of rabbit occurrences is higher with the more introduced biological control diseases, however, what may be driving this is that the fewer the number of introduced diseases, the further back in time we are and the earlier in time we go, the sampling effort decreases. The presence/absence of potential predators and competitors seem to suggest that on the country scale, the number of rabbit occurences increases. This could be a result of predators actually predating competitors of the invasive European Rabbit and Wallaby species competing more intensely with other herbivores. 
+
+Now let's look at some potential interactions between the variables. I will first use co-plots to look at interactions between the continuous and factor variables. 
+```{r, Rabbit Initial GDE Co-Plots, warning=FALSE}
+#for(i in Rabbit[, 9:27]){
+#  for(j in Rabbit[, 28:37]){
+#    coplot(Occurences ~ i | j, rows = 1, data = Rabbit)
+#    Sys.sleep(1)
+#  }
+#}
+```
+
+This nested for loop takes a long time to run, whilst I search for a solution I will do the scatter and box plots for the other scales first and then come back to the co-plots. 
+
+I will move on to the State/Territory-scale level with the first State/Territory I will look at being the Australian Capital Territory (ACT). As the natural log scale was used for the Country-scale I will use it here and for all further graphing. 
+```{r, Rabbit_ACT Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_ACT[, 9:27]){
+  print(ggplot(Rabbit_ACT, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_ACT[, 28:37]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_ACT)
+  Sys.sleep(1)
+}
+```
+
+The possible trends found in the Australia-Scale analysis was replicated for the ACT with the precipitation variables, year, distance to nearest argricultural land edge and distance to nearest permanent water feature may vary with rabbit occurences in ACT. The same possible trends in the factors at the Australia-scale were seen at the ACT scale. 
+
+Next, I will look at the New South Wales data set.
+```{r, Rabbit_NSW Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_NSW[, 9:27]){
+  print(ggplot(Rabbit_NSW, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_NSW[, 28:37]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_NSW)
+  Sys.sleep(1)
+}
+```
+
+The possible trends found in the Australia-Scale analysis was replicated for the NSW with the precipitation variables, year, distance to nearest argricultural land edge and distance to nearest permanent water feature may vary with rabbit occurences in NSW. The same possible trends in the factors at the Australia-scale were seen at the ACT scale except for diseases where no trend is likely and there are no whistling kite absences (a product of the method used to generate them). 
+
+Now I will move onto the Northern Territory data set.
+```{r, Rabbit_NT Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_NT[, 9:27]){
+  print(ggplot(Rabbit_NT, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_NT[, 28:37]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_NT)
+  Sys.sleep(1)
+}
+```
+
+In the Northern territory the percipitation, temperature, land use and day length variables may all vary with the number of rabbit occurences. The season effect seen on the Australia-scale may not exist in NT and there were again no wistling kite absences but all other factor trends seen in other data sets appear similar in NT. 
+
+Next, I repeated the analysis for Queensland (QLD).
+```{r, Rabbit_QLD Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_QLD[, 9:27]){
+  print(ggplot(Rabbit_QLD, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_QLD[, 28:33]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_QLD)
+  Sys.sleep(1)
+}
+```
+
+The plots for Queensland suggest that the trends suggested in the Australia-wide data except for no trend in year, likely due to the relatively greater sampling effert in QLD compared to the other states, and it was not possible to make box plots for the animal species except for red foxes and dingoes. 
+
+Now I will move on to South Australia. There are some issues with this data to note, only **VegeType** can be plotted as a box plot as **Diseases**, **Season** and **Month** only have one level and there is no data on any of the animal species. 
+```{r, Rabbit_SA Initial GDE Scatter and Box plots}
+#Scatter Plots
+#par(mfrow = c(2,3))
+#for(i in Rabbit_SA[, 9:27]){
+#  print(ggplot(Rabbit_SA, aes(x = i, y = log(Occurences))) +
+#          geom_point() + theme_classic())
+#  Sys.sleep(1)
+#}
+
+#Boxplots
+#boxplot(log(Occurences) ~ VegeType, data = Rabbit_SA)
+
+```
+
+There are plotting issues that I need to resolve latter but are due in part to there being no data for some variables and quality issues with what data is there as the occurences are all the same value. 
+
+Next, I move on to the Tasmania data set. In the TAS data set there is no data on the animal species, no variability in the number of occurences and only one factor level for all factors with data except for **VegeType**
+
+For the Victoria data set there is again no data for the animal species and **Diseases** has only one factor level but there is variability in occurences and so the data is plottable. 
+```{r, Rabbit_VIC Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_VIC[, 9:27]){
+  print(ggplot(Rabbit_VIC, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_VIC[, 28:31]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_VIC)
+  Sys.sleep(1)
+}
+```
+
+For the variables that could be plotted there are trends in all variables as was the case in NT. 
+
+For the Wesern Australia data set there is again no data for the animal species, precipitation variables, temperature variables and **Diseases** has only one factor level but there is variability in occurences and so the data is plottable.
+```{r, Rabbit_WA Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in Rabbit_WA[, 9:27]){
+  print(ggplot(Rabbit_WA, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in Rabbit_WA[, 28:31]){
+  boxplot(log(Occurences) ~ i, data = Rabbit_WA)
+  Sys.sleep(1)
+}
+```
+
+There were trends with occurence for all the variables that had data, but the trends were quite different than the trends seen in other states/territories. 
+
+Now I will finally move on to the transect-scale data sets where the same exploratory data analysis of scatter, box and coplots will be done for each data set. I will start with the North-South transect data.
+```{r, NS Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in NS[, 9:27]){
+  print(ggplot(NS, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in NS[, 28:38]){
+  boxplot(log(Occurences) ~ i, data = NS)
+  Sys.sleep(1)
+}
+```
+
+In the North-South data there are possible trends in all of the continuous variables except year, day, distance to the edge of the nearest agricultural land and percentage clay in the soil. Something to note is that these possible trends appear more non-linear at this scale than the Country and State/Territory scales. There were no likely trends between rabbit occurences and the factor variables except for vegetation type (not all 13 types were present), season, month and red foxes. There was a possible effect of transect, something to note when it comes to modelling the data. 
+
+Finally the East-West data
+```{r, EW Initial GDE Scatter and Box plots}
+#Scatter Plots
+par(mfrow = c(2,3))
+for(i in EW[, 9:27]){
+  print(ggplot(EW, aes(x = i, y = log(Occurences))) +
+          geom_point() + theme_classic())
+  Sys.sleep(1)
+}
+
+#Boxplots
+par(mfrow = c(2,3))
+for(i in EW[, 28:36]){
+  boxplot(log(Occurences) ~ i, data = EW)
+  Sys.sleep(1)
+}
+```
+
+The East-West transect data largely has the same trends as the North-South transect data except disease likely has no effect on the occurence of rabbits. 
+
+Further reading in the literature has reveled that *Damien et al 2018* found that percipitation and temperature variables affected rabbit abundance in South Australia. Still in South Australia, *Cabrete et al 2003* found that soil hardness, agricultural land use and the distance to the nearest river as well as percipitation and temperature variables all affected rabbit abundance. They also found that farmland use correlated with a rabbit preference for shrubland over other vegetation types.
+
+Based on the initial GDE and the further reading the following research questions were constructed:
+
+ - can the findings of *Damien et al 2018* and *Cabrete et al 2003* be replicated across all Australian states and Territories
+ - are these findings also replicated at the country and transect scales
+ - if not, what are the variables that affect rabbit occurrence at the different scales
+ - does the presence/absence of potential predators/competitors affect rabbit occurences, if so at what scale
+ 
+This concludes the Initial GDE and Research Questions section
+
+## State/Territory Scale Statistical Analysis
+
+### South Australia
+
+#### GDE
+
+First, cleveland dotplots will be produced to look for potentially extreme values in the variables.
+```{r, SA dotplots}
+#par(mfrow = c(2,3))
+#dotchart(Rabbit_SA$Abund.3)
+#for(i in Rabbit_SA[, 11:27]){
+#  dotchart(i)
+#}
+```
+
+The dotplots suggests no numerical variable has extreme values and this is likely due to the large number of observations in this data set. 
+
+Next I will check for collinearity between the numerical variables using a pairs plot
+```{r, SA pairs plot}
+#par(mar=c(5.1, 4.1, 4.1, 2.1))
+#VOI = Rabbit_SA[, 11:27]
+#pairs2(VOI)
+```
+
+This pairs plot is unreadable, my solution is to do separate pairs plots for a subset of the variables. First, I will try reducing the number of variables in the pairs plot to 8 instead of 16.
+```{r, SA pairs plot 2}
+#VOI2 = Rabbit_SA[, 11:18]
+#VOI3 = Rabbit_SA[, 19:27]
+#pairs2(VOI2)
+#pairs2(VOI3)
+```
+
+The pairs plot does not seem to be working giving correlations of 0 and panels of NAs. I will try a regular pairs plot instead of my augmented pairs plot.
+```{r, SA pairs plot 3}
+#pairs(VOI2)
+#pairs(VOI3)
+```
+
+This did not resolve the issue, I can try reducing the number of variables in the plot further to 4.
+```{r, SA pairs plot 4}
+#VOI4 = Rabbit_SA[, 11:14]
+#VOI5 = Rabbit_SA[, 15:18]
+#VOI6 = Rabbit_SA[, 19:22]
+#VOI7 = Rabbit_SA[, 23:27]
+#pairs(VOI7)
+#rm(VOI, VOI2, VOI3, VOI4, VOI5, VOI6, VOI7, i, j)
+```
+
+My final graphical solution is to plot the pair-wise scatter plots by hand using for-loops. To narrow down the potential plots I need to create I will only make plots for variables highly likely to be colinear. These are the variables relating to percipitation, temperature and day length.
+```{r, SA percipitation pair-wise scatter-plots}
+#Percip_SA = cbind(Rabbit_SA[, 11:12], Rabbit_SA[, 19:22])
+#for(i in 1:ncol(Percip_SA)){
+#  for(j in 1:ncol(Percip_SA)){
+#    plot(i ~ j, data = Percip_SA)
+#  }
+#}
+#rm(Percip_SA)
+```
+
+This also did not work! I can try calculating the pairwise correlations using the *cor = TRUE* arguement of the *summary()* function. If variables are collinear they will have a pairwise correlation of about 0.80 or higher. 
+```{r, SA pairwise correlations}
+#for(i in 1:ncol(Percip_SA)){
+#  for(j in 1:ncol(Percip_SA)){
+#   print(cor(i,j, method = c("pearson")))
+#  }
+#}
+summary(Rabbit_SA)
+```
+
+I have discovered the error, all the values for SA are the same! This is an artifact of the data but it does mean that I can not investigate whether *Damein et al 2018* and *Cebrete et al 2003* can be replicated using this data. I will now move on to analysing the Australian Capital Territory data
+
+### Australian Capital Territory 
+
+#### GDE
+
+I will start with making Cleveland dotplots to check for potentially unusal and/or extreme values in the continuous data variables. 
+```{r, ACT dotplots}
+par(mfrow = c(2,3))
+dotchart(Rabbit_ACT$Abund.3)
+for(i in Rabbit_ACT[, 11:27]){
+  dotchart(i)
+}
+```
+
+The dotplots suggest there are no unusal or extreme values in any of the continuous variables apart from **Abund.3**, to try and lessen the impact on assumptions for statistical models the variable will be natrual-log transformed.
+```{r, ACT dotplots 2}
+Rabbit_ACT$Abund.3_ln = log(Rabbit_ACT$Abund.3)
+dotchart(Rabbit_ACT$Abund.3_ln)
+```
+
+This transformation sufficently reduced the extremness of some of the values in the **Abund.3** variable. I will now move on to creating pairs plots to detect colinearity.
+```{r, ACT pairs plot 1}
+Rabbit_ACT2= Rabbit_ACT[complete.cases(Rabbit_ACT[, 9:37]), ]
+
+VOI_ACT1 = Rabbit_ACT2[, 11:18]
+VOI_ACT2 = Rabbit_ACT2[, 19:27]
+
+pairs2(VOI_ACT1)
+pairs2(VOI_ACT2)
+```
+
+All precipitation variables were highly correlated (r > 0.65) with other precipitation variables except precipitation seasonality, but not with any other variables. Likewise, all temperature variables were highly correlated with each other except temperature seasonality and 30 year average of minimum temperature but not with any other variables. The minimum day length and variation in day length were highly correlated but not with any other variables. Finally, distance to the nearest permanent water fixture, distance to the nearest farmland edge and the percentage of clay in the soil were not highly correlated with any of the variables. 
+
+I can create a pairs plot for factors using the *ggpairs()* function from the *GGally* package and is effectively the ggplot2 equivalent to *pairs()* in base R. 
+```{r, ACT pairs plot 2}
+Rabbit_ACT3 = Rabbit_ACT[complete.cases(Rabbit_ACT[, 29:37]), ]
+
+VOI_ACT3 = Rabbit_ACT2[, 29:32]
+VOI_ACT4 = Rabbit_ACT2[, 33:37]
+
+ggpairs(VOI_ACT3, lower = list(combo = "count"))
+ggpairs(VOI_ACT4, lower = list(combo = "count"))
+```
+
+The pairs plots suggested that only month and vegetation type were potentially highly correlated but I am skeptical of this correlation as there is no biological reason for this. All other variables were not highly correlated with each other. 
+
+Based on the findings of the pair plots, the literature and biological reasonability, the following variables will be used:
+
+ - **Abund.3_ln**
+ - **A_Prec_Avg30Yr**: 30 year average of average precipitation, numeric
+ - **A_Psea_Avg30Yr**: 30 year average of average precipitation seasonality, numeric 
+ - **A_TAvg_Avg30Yr**: 30 year average of average temperature, numeric
+ - **A_TSea_Avg30Yr**: 30 year average of average temperature seasonality, numeric
+ - **DistPermWater**: euclidean distance in metres to the nearest permanent water feature, numeric
+ - **DistAgriLand**: euclidean distance in metres to the nearest agricultural land margins, numeric
+ - **PercSoilClay**: the percentage of estimated clay in the soil, numeric
+ - **VarDayLength**: variation in day length in hours, numeric
+ - **VegeType**: vegetation type, factor with 13 levels
+ - **Month**: month of the year, factor with 12 levels
+ - **Diseases**: the number of introduced diseases as biological control for rabbits in a given year, factor with 4 levels
+ - **Red.Fox**: presence/absence of red foxes, factor with 2 levels
+ - **Dingo**: presence/absence of dingoes , factor with 2 levels
+ - **Feral.Cat**: presence/absence of feral cats, factor with 2 levels 
+ - **Whistling.Kite**: presence/absence of whistling kites, factor with 2 levels
+ - **Wallaby.Sp** :presence/absence of a wallaby species, factor with 2 levels
+ 
+I decided to include precipitation and temperature seasonality as these represent natural disturbances as opposed to the effect of the weather phemomenon themselves. The variation in day length was chosen over minimum day length as it captures the lowest and highest level of activity in the rabbits as opposed to the minimum amount of activity that minimum day length captures. 
+
+These variables will be used going forward to look at the relationship with the natural log of rabbit occurence and to identify possible interactions to include in statistical models.
+```{r, ACT potential predictor variables}
+Rabbit_ACT$Occurences_ln = log(Rabbit_ACT$Occurences)
+Rabbit_ACT2$Occurences_ln = log(Rabbit_ACT2$Occurences)
+Rabbit_ACT2$Abund.3_ln = log(Rabbit_ACT2$Abund.3)
+Rabbit_ACT$Abund.3_ln = log(Rabbit_ACT$Abund.3)
+
+PPV_ACT1 = c("Occurences_ln", "A_Prec_Avg30Yr", "A_Psea_Avg30Yr", "A_TAvg_Avg30Yr", "A_TSea_Avg30Yr", "Abund.3_ln")
+PPV_ACT2 = c("Occurences_ln", "DistPermWater", "DistAgriLand", "PercSoilClay", "VarDayLength")
+pairs(Rabbit_ACT2[, PPV_ACT1])
+pairs(Rabbit_ACT2[, PPV_ACT2])
+```
+
+The pairs plots suggest that the response varies linearly with the precipitation and temperature variables as well as the natural log of abundance. However, the response may decay exponentially with distance to the nearest permanent water feature and the distance to the nearest farm edge, suggesting that these variables should be log-transformed when fitting linear models. Finally, the pairs plots suggest that the response varies linearly with the percentage clay in the soil and the variation in day length. 
+```{r, ACT transforming variables}
+Rabbit_ACT$DistPermWater_ln = log(Rabbit_ACT$DistPermWater)
+Rabbit_ACT$DistAgriLand_ln = log(Rabbit_ACT$DistAgriLand)
+```
+
+Now I will look at potential interactions between the selected predictors.
+```{r, ACT interaction plots 1}
+par(mfrow = c(2,3))
+boxplot(Occurences_ln ~ Red.Fox*Dingo, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Red.Fox*Feral.Cat, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Red.Fox*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Red.Fox*Wallaby.Sp, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Dingo*Feral.Cat, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Dingo*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Dingo*Wallaby.Sp, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Feral.Cat*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Feral.Cat*Wallaby.Sp, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Wallaby.Sp*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Diseases*Red.Fox, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Diseases*Dingo, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Diseases*Feral.Cat, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Diseases*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Diseases*Wallaby.Sp, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ VegeType*Red.Fox, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ VegeType*Dingo, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ VegeType*Feral.Cat, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ VegeType*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ VegeType*Wallaby.Sp, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Diseases, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Red.Fox, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Dingo, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Feral.Cat, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Whistling.Kite, data = Rabbit_ACT)
+boxplot(Occurences_ln ~ Month*Wallaby.Sp, data = Rabbit_ACT)
+```
+
+The interaction plots suggest that when 2 potential predators or a potential predator and a wallaby species are both present the number of rabbit occurences on the natural log-scale increases. No other interactions seem to be suggested. However, whilst these are interesting interactions they could also be artifacts of the process used to generate the absence data. 
+
+Now to look at continuous-categorical interactions
+```{r, ACT interaction plots 2}
+coplot(Occurences_ln ~ Abund.3_ln | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ A_Prec_Avg30Yr | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ A_Psea_Avg30Yr | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ A_TAvg_Avg30Yr | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ A_TSea_Avg30Yr | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ DistPermWater | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ DistAgriLand | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ PercSoilClay | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ VarDayLength | Month, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ Abund.3_ln | VegeType, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ DistPermWater | VegeType, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ DistAgriLand | VegeType, rows = 1, data = Rabbit_ACT)
+coplot(Occurences_ln ~ Abund.3_ln | Diseases, panel = coplot.ablines, rows = 1, data = Rabbit_ACT)
+```
+
+the co-plots suggest that there are potential interactions between the seasonality variables and month as well as an interaction between rabbit abundance and the diseases present (not only data on no diseases present and when myxomatosis is present were available for ACT). 
+
+Based on the interaction plots and biological reasoning the following interactions will be intially used in statistical models:
+
+ - **Abund.3_ln** x **Diseases**
+ - **A_Psea_Avg30yr** x **Month**
+ - **A_Tsea_Avg30yr** x **Month**
+ - **Red.Fox** x **Dingo**
+ - **Red.Fox** x **Feral.Cat**
+ - **Red.Fox** x **Wallaby.Sp**
+ - **Dingo** x **Wallaby.Sp**
+ 
+I have limited myself to 4 two-way species interactions as these represent different types of species dynamics (invasive.pred x native.pred, invasive.pred x invasive.pred, invasive.pred x native.prey, native.pred x native.prey) which is more generalisable than specific species interacting with each other. 
+
+#### Statistical Modelling
+
+As the rabbit occurences data are counts my initial model will be a simple poisson generalized linear model with a natural log link function
+```{r, ACT model building 1}
+m1_ACT = glm(Occurences ~ Abund.3_ln+ Red.Fox*Dingo + Whistling.Kite + Month + 
+               Red.Fox*Feral.Cat + Red.Fox*Wallaby.Sp + Dingo*Wallaby.Sp+ DistAgriLand*VegeType + 
+               A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + PercSoilClay + VarDayLength, 
+             family = poisson(link = "log"), data = Rabbit_ACT2)
+summary(m1_ACT)
+```
+
+The seasonality variables had to be removed from the model as R did not let them be induded but when the model was run the error Warning 'glm.fit: fitted rates numerically 0 occurred' was returned. This error can occur due to over fitting the data or structural zeros in the data. It is likely over-fitting is the cause as when I checked the model summary effect size of magnitude 0.0x were represented as xe-02, indicative of over fitting the data. To combat this, **Whistling.Kite** and **PercSoilClay** were removed and the model was refitted.
+```{r, ACT model building 2}
+m2_ACT = glm(Occurences ~ Abund.3_ln+ Red.Fox*Dingo + Month + Red.Fox*Feral.Cat +
+             Red.Fox*Wallaby.Sp + Dingo*Wallaby.Sp+ DistAgriLand*VegeType + 
+               A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + VarDayLength, 
+             family = poisson(link = "log"), data = Rabbit_ACT2)
+summary(m2_ACT)
+```
+
+The same error occured but the intercations between the species seem to be unidentifable so can be removed from the model and the variables added additvely.
+```{r, ACT model building 3}
+m3_ACT = glm(Occurences ~ Red.Fox + Dingo + Month + Feral.Cat +
+             Wallaby.Sp+ DistAgriLand*VegeType + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + 
+             DistPermWater, family = poisson(link = "log"), data = Rabbit_ACT2)
+summary(m3_ACT)
+```
+
+The same issue occurred again but I am reluctant to exclude more variables so I will just accept this error and factor it in to interpreting the outputs. Now for model diagnostics
+```{r, ACT model diagnostics}
+#diagnostic plots
+res.d_m3_ACT = resid(m3_ACT, type = "deviance")
+par(mfrow = c(2,3))
+plot(m3_ACT, which = c(1, 3, 4))
+plot(res.d_m3_ACT)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Abund.3_ln, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Red.Fox, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Dingo, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Month, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Feral.Cat, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ Wallaby.Sp, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ DistAgriLand, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ VegeType, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ A_Prec_Avg30Yr, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ A_TAvg_Avg30Yr, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ DistPermWater, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m3_ACT ~ VarDayLength, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+
+#dispersion and colinearity
+dispersion = 375.12/3341
+dispersion
+#vif(m3_ACT) returned a message that there are aliased coefficents meaning some variables are perfectly correlated
+```
+
+Due to the error message in the variance inflation factor function I need to find the linear combination that is perfectly correlated. 
+```{r, detecting linearly dependent combination}
+ld.vars <- attributes(alias(m3_ACT)$Complete)$dimnames[[1]]
+ld.vars
+```
+
+This makes sense as the effect size for this linear combination is NA, indicative of perfect correlation. I can try and standardise **DistAgriLand** and see if this resolves the issue.
+```{r, standardising DistAgriLand}
+a = mean(Rabbit_ACT2$DistAgriLand, na.rm = TRUE)
+b = sd(Rabbit_ACT2$DistAgriLand)
+Rabbit_ACT2$DistAgriLand.std = (Rabbit_ACT2$DistAgriLand - a)/b
+```
+
+The plots of the residuals as well as the dispersion parameter indicate there is serious under dispersion in the data. This implies the mean decreases as the variance increases and violates the assumption of the poisson distribution that the mean equals the variance. There are alternative models, namely a quasi-poisson glm and a negative binomial glm that can be used for under/over-dispersed data. If the mean changes linearly with the variance than the quasi-poisson glm is the more appropriate of the two but if the mean changes quadratically with the variance than the negative binomial glm is the more appropriate of the two models. The fits vs residuals and scale-location plot both suggest that the mean changes linearly with the variance, as such fitting a quasi-poisson glm would be the most appropriate next step. 
+```{r, ACT model building 4}
+m4_ACT = glm(Occurences ~ Red.Fox + Dingo + Month + Feral.Cat +
+             Wallaby.Sp+ DistAgriLand*VegeType + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + 
+             DistPermWater, family = quasipoisson(link = "log"), data = Rabbit_ACT2)
+summary(m4_ACT)
+```
+
+The model was run using **DistAgriLand.std** but this did not change the perfect correlation between **DistAgriLand** and **VegeType11**.
+
+Now for the model diagnostics
+```{r, ACT model diagnostics 2}
+res.d_m4_ACT = resid(m4_ACT, type = "deviance")
+par(mfrow = c(2,3))
+plot(m4_ACT, which = c(1, 3, 4))
+plot(res.d_m4_ACT)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Abund.3_ln, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Red.Fox, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Dingo, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Month, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Feral.Cat, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ Wallaby.Sp, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ DistAgriLand, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ VegeType, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ A_Prec_Avg30Yr, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ A_TAvg_Avg30Yr, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ DistPermWater, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+plot(res.d_m4_ACT ~ VarDayLength, data = Rabbit_ACT2)
+abline(h = 0, lwd = 2, lty = 2, col = 2)
+```
+
+Using the quasi-poisson glm seems to have reduced the under-dispersion in most of the variable but the influential residuals are likely still increasing the standard errors of some parameters. 
+
+```{r, ACT model selection 1}
+drop1(m4_ACT, test = "Chisq")
+```
+
+The interaction tem was significant so was kept in the model but the additive term with the largest p-value was **Month**, as such it was removed from the model
+```{r, ACT model selection 2}
+m5_ACT = update(m4_ACT, formula = drop.terms(m4_ACT$terms, 3, keep.response = TRUE))
+drop1(m5_ACT, test = "Chisq")
+```
+
+The interaction term remained significant so was kept in the model but the additive term with the largest p-value was **Red.Fox**, as such it was removed from the model.
+```{r, ACT model selection 3}
+m6_ACT = update(m5_ACT, formula = drop.terms(m5_ACT$terms, 1, keep.response = TRUE))
+drop1(m6_ACT, test = "Chisq")
+```
+
+The interaction term is still significant so was kept in the model but the additive term with the largest p-value was **Dingo**, as such it was removed from the model
+```{r, ACT model selection 4}
+m7_ACT = update(m6_ACT, formula = drop.terms(m6_ACT$terms, 1, keep.response = TRUE))
+drop1(m7_ACT, test = "Chisq")
+```
+
+The interaction term was still significant so was kept in the model but the additive term with the largest p-value was **Wallaby.SP**, as such it was removed from the model.
+```{r, ACT model selection 5}
+m8_ACT = update(m7_ACT, formula = drop.terms(m7_ACT$terms, 2, keep.response = TRUE))
+drop1(m8_ACT, test = "Chisq")
+```
+
+The interaction term was still significant so was kept in the model and the only additive term with a non-significant p-value was **Feral.Cat**, as such it was removed from the model.
+```{r, ACT model selection 6}
+m9_ACT = update(m8_ACT, formula = drop.terms(m8_ACT$terms, 1, keep.response = TRUE))
+drop1(m9_ACT, test = "Chisq")
+```
+
+All remaining terms in the model are significant and so will stay in the model. Thus **m9_ACT** is the final model for the Australian Capital Territory data set. 
+```{r, ACT final model}
+final_ACT = m9_ACT
+summary(final_ACT)
+anova(final_ACT, test = "Chisq")
+par(mfrow = c(2,2))
+plot(final_ACT, which = c(1, 3, 4))
+plot(final_ACT$residuals)
+```
+
+The coefficent values with effect sizes of less than -10 are effectively 0 when back-transformed to the response scale and those with an effect size of between -5 and -10 have orders of magnitude less than -3 when back transformed onto the response scale making them very small effect sizes and most likely unimportant biologically despite the highly significant p-values. Thus, Eucalyptus woodland (VegeType 3), woodland (VegeType4), tussock grassland(VegeType8), hummock grassland (VegeType9) and saltbushes(VegeType10) have no biologically meaningful effect sizes. It is also important to note that vegetation types 1, 5, 6, 12 and 13 were not present in the Australian Capital territory and vegetation types 3, 8 and 10 had sample sizes less than 10. Interestingly, the interaction term between **DistAgriLand** and **VegeType** has positive effect sizes but I will discuss with my supervisor on how to interpret this in light of the linearly dependent combination mentioned earlier. 
+
+The continuous variables all decreased the rabbit occurence rate except for disance to the nearest permanent water feature which increased the rabbit occurence rate. 
+
+As **VegeType** is significant and a factor I would like to know which factor levels differ between eachother, to do this I can do post-hoc testing using the *emmeans* package and plot the results
+```{r, ACT post-hoc testing}
+final_ACT_emm = emmeans(final_ACT, "VegeType", type = "response")
+final_ACT_emm
+pairs(final_ACT_emm)
+contrast(final_ACT_emm, type = "response")
+plot(contrast(final_ACT_emm, type = "response"))
+plot(pairs(final_ACT_emm))
+```
+
+These post-hoc test results require discussion with Dr Trinder as I suspect df = Inf would make these results un-interpretable but I am not sure.
+
+I will now try and plot the predictions of the model, this should help with interpretation.
+```{r, ACT plotting model predictions}
+avPlots(final_ACT)
+```
+
+The added-variable plots are a quick and dirty way of plotting the predictions of the model (I will do it more professionally after all of the analyses) and suggest that whilst significant statistically, vegetation type has a very small/basically negligible effect on the log of rabbit occurence. The same is true for average 30yr average temperature and the interaction between distance to the edge of the nearest farm and vegetation type. As such the model can be simplified further to exclude **VegeType**, **A_TAvg_Avg30Yr** and the interaction between **VegeType** and **DistAgriLand**. 
+```{r, ACT final model 2}
+final_ACT2 = glm(Occurences ~ A_Prec_Avg30Yr + DistAgriLand + DistPermWater + A_TAvg_Avg30Yr, 
+                 family = quasipoisson(link = "log"), data = Rabbit_ACT2)
+summary(final_ACT2)
+par(mfrow = c(2,2))
+plot(final_ACT2, which = c(1,3,4))
+plot(resid(final_ACT2, type = "deviance"))
+plot(resid(final_ACT2, type = "deviance") ~ A_Prec_Avg30Yr, data = Rabbit_ACT2)
+abline(h = 0, col = 2, lwd = 2, lty = 2)
+plot(resid(final_ACT2, type = "deviance") ~ DistAgriLand , data = Rabbit_ACT2)
+abline(h = 0, col = 2, lwd = 2, lty = 2)
+plot(resid(final_ACT2, type = "deviance") ~ DistPermWater, data = Rabbit_ACT2)
+abline(h = 0, col = 2, lwd = 2, lty = 2)
+```
+
+I tried running the model with **A_TAvg_Avg30Yr** removed but the optimiser was returning ridiculous dispersion values (over 1 million) and all of the terms became non-significant despite there clearly being a relationship. When temperature was added back in to the model, parameters became more realistic. I need to check with Dr Trinder about this result though!
+
+### New South Wales
+
+#### GDE
+
+First, I want to know what vegetation types are present in New South Wales so I will just plot the variable. I then also want to remove NA values for plotting purposes. 
+```{r, NSW GDE}
+plot(log(Occurences) ~ VegeType, data = Rabbit_NSW)
+
+Rabbit_NSW$Abund.3_ln = log(Rabbit_NSW$Abund.3)
+Rabbit_NSW2= Rabbit_NSW[complete.cases(Rabbit_NSW[, 9:37]), ]
+summary(Rabbit_NSW2)
+```
+
+#### Statistical Analysis
+
+To be able to compare the models for the entire analysis the same set of potential predictors used in the ACT model will be used for all intial models. 
+
+Initially, a poisson glm was fitted to the data.
+```{r, NSW model building }
+m1_NSW = glm(Occurences ~ Abund.3_ln + Month + DistAgriLand + A_TSea_Avg30Yr + A_Psea_Avg30Yr + 
+             A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + PercSoilClay + VarDayLength, 
+             family = poisson(link = "log"), data = Rabbit_NSW2)
+summary(m1_NSW)
+vif(m1_NSW)
+```
+
+The model has alised coefficients suggesting there are variables perfectly correlated it is likely **A_TAvg_Avg30Yr**, **DistPermWater**, **VarDayLength** as these variables have NA estimates but I can check which ones are alised to be sure. 
+```{r, NSW detecting linearly dependent combination}
+ld.vars2 = attributes(alias(m1_NSW)$Complete)$dimnames[[1]]
+ld.vars2
+```
+
+I will remove **A_TSea_Avg30Yr** and **A_Psea_Avg30Yr** and re-fitted the model.
+```{r, NSW model building 2}
+m2_NSW = glm(formula = Occurences ~ Abund.3_ln + Month + DistAgriLand + A_TAvg_Avg30Yr + 
+             A_Prec_Avg30Yr + A_Prec_Avg30Yr + PercSoilClay + VarDayLength, 
+             family = poisson(link = "log"), data = Rabbit_NSW2)
+summary(m2_NSW)
+vif(m2_NSW)
+```
+
+No coefficients are alised but the GVIFs suggest large amounts of colinearity. We will check the model assumptions before commenting further. 
+```{r, NSW model diagnostics 1}
+res.d_m2_NSW = resid(m2_NSW, type = "deviance")
+par(mfrow = c(2,3))
+plot(m2_NSW, which = c(1,3,4))
+plot(res.d_m2_NSW)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m2_NSW ~ Abund.3, data = Rabbit_NSW2)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m2_NSW ~ Month, data = Rabbit_NSW2)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m2_NSW ~ DistAgriLand, data = Rabbit_NSW2)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m2_NSW ~ A_TAvg_Avg30Yr, data = Rabbit_NSW2)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m2_NSW ~ A_Prec_Avg30Yr, data = Rabbit_NSW2)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m2_NSW ~ PercSoilClay, data = Rabbit_NSW2)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m2_NSW ~ VarDayLength, data = Rabbit_NSW2)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+```
+
+There is a very influential residual in the model. We can see what difference it makes if we remove the observation from the data and re-fit the model. 
+```{r, NSW model building 3}
+Rabbit_NSW3 = Rabbit_NSW2[-c(1, 198, 199, 200), ]
+m3_NSW = glm(formula = Occurences ~ Abund.3_ln + Month + DistAgriLand + A_TAvg_Avg30Yr + 
+             A_Prec_Avg30Yr + A_Prec_Avg30Yr + PercSoilClay + VarDayLength, 
+             family = poisson(link = "log"), data = Rabbit_NSW3)
+summary(m3_NSW)
+```
+
+```{r, NSW model diagnostics}
+res.d_m3_NSW = resid(m3_NSW, type = "deviance")
+par(mfrow = c(2,3))
+plot(m3_NSW, which = c(1,3,4))
+plot(res.d_m3_NSW)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m3_NSW ~ Abund.3, data = Rabbit_NSW3)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m3_NSW ~ Month, data = Rabbit_NSW3)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m3_NSW ~ DistAgriLand, data = Rabbit_NSW3)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m3_NSW ~ A_TAvg_Avg30Yr, data = Rabbit_NSW3)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m3_NSW ~ A_Prec_Avg30Yr, data = Rabbit_NSW3)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m3_NSW ~ PercSoilClay, data = Rabbit_NSW3)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(res.d_m3_NSW ~ VarDayLength, data = Rabbit_NSW3)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+```
+
+The diagnostic plots suggests that there is under-dispersion in the data and that the variance decreases linearly with the mean suggesting that a quasi-poisson glm would be a better fitting model. There is also an issue of too few unique data points in the variables giving an estimate of NA.
+```{r, }
+length(Rabbit_NSW3[Rabbit_NSW3$A_Prec_Avg30Yr != NA, ])
+length(Rabbit_NSW3[Rabbit_NSW3$A_TAvg_Avg30Yr != NA, ])
+length(Rabbit_NSW3[Rabbit_NSW3$PercSoilClay != NA, ])
+length(Rabbit_NSW3[Rabbit_NSW3$VarDayLength != NA, ])
+```
+
+As we can see these variables only have 38 data points that not NA, as such these variables were removed as effect sizes cannot be estimated from them. 
+
+```{r, NSW model building 4}
+m3_NSW = glm(formula = Occurences ~ Abund.3_ln + Month, 
+             family = quasipoisson(link = "log"), data = Rabbit_NSW3)
+summary(m3_NSW)
+```
+
+This concludes the New South Wales Section.
+
+### Northern Territory
+
+#### GDE
+
+First, I want to know what vegetation types are present in New South Wales so I will just plot the variable. I then also want to remove NA values for plotting purposes. 
+```{r, NT GDE}
+plot(log(Occurences) ~ VegeType, data = Rabbit_NT)
+
+Rabbit_NT$Abund.3_ln = log(Rabbit_NT$Abund.3)
+Rabbit_NT2= Rabbit_NT[complete.cases(Rabbit_NT[, 9:37]), ]
+summary(Rabbit_NT2)
+summary(Rabbit_NT)
+```
+
+The animal and disease variables cannot be included in the model as there are very little or no absence data for the Northern Territory.
+```{r, NT model building 1}
+m1_NT = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = poisson(link = "log"), data = Rabbit_NT)
+summary(m1_NT)
+```
+
+The model summary suggests that the **DistAgriLand:VegeType5** linear combination is linearly dependent but I will check to make sure. 
+```{r, NT detecting linearly dependent combination}
+ld.vars3 = attributes(alias(m1_NT)$Complete)$dimnames[[1]]
+ld.vars3
+```
+
+Indeed this is the case, however the interaction will not be removed as it was a focus of the study unless model selection suggests otherwise. Now to do some model diagnostics
+```{r, NT model diagnostics 1}
+res.d_m1_NT = resid(m1_NT, type = "deviance")
+par(mfrow = c(2,2))
+plot(m1_NT, which = c(1,3,4))
+plot(res.d_m1_NT)
+abline(h = 0, col = 2, lty = 1, lwd = 2)
+dispersion_NT = 41271/3441
+dispersion_NT
+```
+
+The diagnostic plots suggests an issue of under-dispersion whilst the dispersion paramter suggests an issue of over dispersion (11.99). Regardless the variance changes approximately linearly with the mean so a quasi-poisson glm seems a more appropriate model. The residuals overall look independent but there is a highly influential residual. 
+```{r, NT model building 2}
+m2_NT = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = quasipoisson(link = "log"), data = Rabbit_NT)
+summary(m2_NT)
+```
+
+The quasipoisson glm suggests the dispersion parameter is approximately 883. This is very large and highly unlikely to be realsitic given we calculated the dispersion parameter to be approximately 12. It is possible the model represents an over fit to the data 
+```{r, NT model diagnostics 2}
+res.d_m2_NT = resid(m2_NT, type = "deviance")
+par(mfrow = c(2,2))
+plot(m2_NT, which = c(1,3,4))
+plot(res.d_m2_NT)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+```
+
+It is unlikely the influential obersvation is influencing the estimate of the dispersion parameter but it could still be a symptom of over-fitting. Let's do model selection and see if the issue resolves itself as we simplify the model.
+```{r, NT model selection 1}
+drop1(m2_NT, test = "Chisq")
+```
+
+The interaction term is insignificant so was dropped from the model and the variables in the interaction were put in the model additively with all other additive terms staying in the model.
+```{r, NT model selection 2}
+m3_NT = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = quasipoisson(link = "log"), data = Rabbit_NT)
+drop1(m3_NT, test = "Chisq")
+```
+
+The model now only has additive terms and the term with the largest p-value is **Month**, as such it was removed from the model and the model re-fitted.
+```{r, NT model selection 3}
+m4_NT = update(m3_NT, formula = drop.terms(m3_NT$terms, 9, keep.response = TRUE))
+drop1(m4_NT, test = "Chisq")
+```
+
+The additive term with the largest p-value is now **PercSoilClay**, as such it was removed from the model and the model was re-fitted.
+```{r, NT model selection 5}
+m5_NT = update(m4_NT, drop.terms(m4_NT$terms, 8, keep.response = TRUE))
+drop1(m5_NT, test = "Chisq")
+```
+
+The additive term with the largest non-significant p-value is now **A_TAvg_Avg30Yr**, as sych it was removed from the model and the model was re-fitted.
+```{r, NT model selection 6}
+m6_NT = update(m5_NT, drop.terms(m5_NT$terms, 3, keep.response = TRUE))
+drop1(m6_NT, test = "Chisq")
+```
+
+The additive term with the largest non-significant p-value is now **A_Prec_Avg30Yr**, as such it was removed from the model and the model re-fitted.
+```{r, NT model selection 7}
+m7_NT = update(m6_NT, drop.terms(m6_NT$terms, 2, keep.response = TRUE))
+drop1(m7_NT, test = "Chisq")
+```
+
+The additive term with the largest non-significant p-value is now **A_TSea_Avg30Yr**, as such it was removed from the model and the model re-fitted.
+```{r, NT model selection 8}
+m8_NT = update(m7_NT, drop.terms(m7_NT$terms, 7, keep.response = TRUE))
+drop1(m8_NT, test = "Chisq")
+```
+
+The additive term with the largest non-significant p-value is now **VarDayLength**, as such it was removed from the model and the model re-fitted.
+```{r, NT model selection 9}
+m9_NT = update(m8_NT, drop.terms(m8_NT$terms, 5, keep.response = TRUE))
+drop1(m9_NT, test = "Chisq")
+```
+
+The additive term with the largest non-significant p-value is now **DistPermWater**, as such it was removed from the model and the model re-fitted.
+```{r, NT model selection 10}
+m10_NT = update(m9_NT, drop.terms(m9_NT$terms, 2, keep.response = TRUE))
+drop1(m10_NT, test = "Chisq")
+```
+
+The additive term with the largest non-significant p-value is now **A_Psea_Avg30Yr**, as such it was removed from the model and the model re-fitted.
+```{r, NT model selection 11}
+m11_NT = update(m10_NT, drop.terms(m10_NT$terms, 4, keep.response = TRUE))
+drop1(m11_NT, test = "Chisq")
+```
+
+The only term with a non-significant p-value is **DistAgriLand**, as such it was removed from the model and the model re-fitted.
+```{r, NT model selection 12}
+m12_NT = update(m11_NT, drop.terms(m11_NT$terms, 2, keep.response = TRUE))
+drop1(m12_NT, test = "Chisq")
+```
+
+All terms in the model are significant, as such **m12_NT** is the final model for the Northern Territory data, now for final model analysis
+```{r, NT final model}
+final_NT = m12_NT
+summary(final_NT)
+par(mfrow = c(2,3))
+plot(final_NT, which = c(1,3,4))
+plot(resid(final_NT, type = "deviance"))
+avPlot(final_NT, variable = "Abund.3_ln")
+anova(final_NT, test = "Chisq")
+vif(final_NT)
+```
+
+Only the intercept term is significant (only telling us that it is significantly different from 0), hence why **VegeType** is significant but none of the differences in log-rabbit occurences relative to vegetation type 1 (Rainforests and vine thickets) are not significant. The number of occurences is very large (over 22000) and so is abundance (13.62), but there does not appear to be a time effect in the log of rabbit occurences as **Month** was not significant. 
+
+### Queensland
+
+#### GDE
+
+First, I want to know what vegetation types are present in New South Wales so I will just plot the variable. I then also want to remove NA values for plotting purposes. 
+```{r, QLD GDE}
+plot(log(Occurences) ~ VegeType, data = Rabbit_QLD)
+summary(Rabbit_QLD)
+
+Rabbit_QLD$Abund.3_ln = log(Rabbit_QLD$Abund.3)
+Rabbit_QLD2= Rabbit_QLD[complete.cases(Rabbit_QLD[, 9:37]), ]
+summary(Rabbit_QLD2)
+```
+
+#### Statistical Analysis
+
+As usual, I will start by fitting a simple poisson glm with the canidate predators. 
+```{r, QLD model building 1}
+m1_QLD = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = poisson(link = "log"), data = Rabbit_QLD)
+summary(m1_QLD)
+```
+
+The model appears to have no colinearity issues! I will now do the ususal model diagnostics
+```{r, QLD model diagnostics 1}
+par(mfrow = c(2,2))
+plot(m1_QLD, which = c(1,3,4))
+plot(resid(m1_QLD, type = "deviance"))
+dispersion_QLD = 3.8150e08/541644
+dispersion_QLD
+```
+
+The fits vs residuals and scale-location plots as well as the dispersion parameter suggest that there is over dispersion in the data and an influential observation, but the residuals are approximately symmetric. To account for the over-dispersion i will fit a quasipoisson glm as the variance seems to increase linearly with the mean.
+```{r, QLD model building 2}
+m2_QLD = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+         DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+         A_TSea_Avg30Yr, family = quasipoisson(link = "log"), data = Rabbit_QLD)
+summary(m2_QLD)
+```
+
+The influential residual may be affecting the estimation of the dispersion parameter as it super high and totally unrealistic.
+```{r, QLD model diagnostics 2}
+par(mfrow = c(2,2))
+plot(m2_QLD, which = c(1,3,4))
+plot(resid(m2_QLD, type = "deviance"))
+```
+
+Indeed there are no influential residuals in the model suggesting this is not the cause of the super high dispersion parameter estimate. I can start with model selection and see if this changes anything, as has been the case before.
+```{r, QLD model selection 1}
+drop1(m1_QLD, test = "Chisq")
+```
+
+The interaction term in the model is non-significant so was removed from the model and the model was then re-fitted with the terms in the interaction added additively. 
+```{r, QLD model selection 2}
+m3_QLD  = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = quasipoisson(link = "log"), data = Rabbit_QLD)
+drop1(m3_QLD, test = "Chisq")
+```
+
+All terms in the model are now significant, before accepting this large model as the final model I want to check the parameter estimates and make augmented-variable plots to look at the predictions. 
+```{r, QLD checking potential final model}
+summary(m3_QLD)
+par(mfrow = c(2,2))
+plot(m3_QLD)
+plot(resid(m3_QLD, type = "deviance"))
+#par(mfrow = c(2,3))
+#avPlots(m3_QLD)
+```
+
+The avPlots could not be generated due to the massive amount of data, but the summary output suggests that vegetation type does not have a significant effect on the response. The diagnostic plots suggest a quadratic change in dispersion but independent residuals. I will remove vegetation type from the model and add an orthogonal polynomial term to **A_Prec_Avg30Yr** and **A_TAvg_Avg30Yr** as the avPlots that could be made suggested that these variables may have a quadratic relationship with the response on the link scale. 
+```{r, model building 3}
+m4_QLD = glm(Occurences ~ Abund.3_ln + poly(A_Prec_Avg30Yr, 2) + poly(A_TAvg_Avg30Yr, 2) + 
+             DistPermWater + DistAgriLand + VarDayLength + PercSoilClay + Month + 
+             A_Psea_Avg30Yr + A_TSea_Avg30Yr, family = quasipoisson(link = "log"), data = Rabbit_QLD)
+summary(m4_QLD)
+par(mfrow = c(2,2))
+plot(m4_QLD, which = c(1,3,4))
+plot(resid(m4_QLD, type = "deviance"))
+```
+
+The quadratic terms are significant suggesting that it was appropriate. The non-standardised dispersion plot also suggests that adding the quadratic terms has delt with the pattern in dispersion. However, we now have non-significant terms in the model suggesting we now need to model selection.
+```{r, QLD model selection 3}
+drop1(m4_QLD, test = "Chisq")
+```
+
+The polynomial terms are significant so were kept in the model. The additive term with the largest non-significant p-value was **A_TSea_Avg30Yr**, as such it was removed from the model and the model re-fitted. 
+```{r, QLD model selection 4}
+m5_QLD = update(m4_QLD, drop.terms(m4_QLD$terms, 10, keep.response = TRUE))
+drop1(m5_QLD, test = "Chisq")
+```
+
+The only non-significant term in the model is **VarDayLength**, as such it was removed from the model and the model was re-fitted.
+```{r, QLD model selection 5}
+m6_QLD = update(m5_QLD, drop.terms(m5_QLD$terms, 6, keep.response = TRUE))
+drop1(m6_QLD, test = "Chisq")
+```
+
+All terms are now significant in the model suggesting that this is our final model.
+```{r, QLD final model}
+final_QLD = m6_QLD
+summary(final_QLD)
+par(mfrow = c(2,2))
+plot(final_QLD, which = c(1,3,4))
+plot(resid(final_QLD, type = "deviance"))
+#anova(final_QLD, test = "Chisq")
+```
+
+The parameter estimates and model diagnostics look reasonable apart from an influential residual that is likely biasing the estimate of the dispersion parameter. As **Month** is a factor, post-hoc pairwise comparisons were done for this variable only. 
+```{r, QLD post-hoc testing}
+final_QLD_emm = emmeans(final_QLD, "Month", type = "response")
+final_QLD_emm
+pairs(final_QLD_emm)
+contrast(final_QLD_emm, type = "response")
+plot(contrast(final_QLD_emm, type = "response"))
+plot(pairs(final_QLD_emm))
+```
+
+All comparisons and contrasts were significant using the tukey pairwise-comparison model and false discovery rate p-value adjustment method.
+
+### Western Australia
+
+#### GDE
+
+First, I want to know what vegetation types are present in New South Wales so I will just plot the variable. I then also want to remove NA values for plotting purposes. 
+```{r, WA GDE}
+plot(log(Occurences) ~ VegeType, data = Rabbit_WA)
+summary(Rabbit_WA)
+
+Rabbit_WA$Abund.3_ln = log(Rabbit_WA$Abund.3)
+Rabbit_WA2= Rabbit_WA[complete.cases(Rabbit_WA[, 9:37]), ]
+summary(Rabbit_WA2)
+```
+
+The Western Australia data set does not have any animal, disease or 30yr average data. Additionally, the vegetation type factor does not have information on water habbits or unclassified habitat types. This will severely limit bthe comparisons that can be made as many of the other state data sets have 30yr average data. 
+
+#### Statistical Analysis
+
+As usual, I will start by fitting a simple poisson glm with the canidate predictors that there is data for in the WA data set. 
+```{r, WA model building 1}
+m1_WA = glm(Occurences ~ Abund.3_ln +  DistPermWater + DistAgriLand*VegeType + VarDayLength + 
+               PercSoilClay + Month, family = poisson(link = "log"), data = Rabbit_WA)
+summary(m1_WA)
+```
+
+I strongly suspect over-dispersion will be an issue (as it was in all of the other models) so i will produce diagnostic plots
+```{r, WA model diagnostics 1}
+par(mfrow = c(2,2))
+plot(m1_WA, which = c(1,3,4))
+plot(resid(m1_WA, type = "deviance"))
+```
+
+There is some over-dispersion in the data as expected but there are also 2 highly influential points in the data set. I will deal with the over-dispersion by fitting a quasi-poisson glm. 
+```{r, WA model building 2}
+m2_WA = glm(Occurences ~ Abund.3_ln +  DistPermWater + DistAgriLand*VegeType + VarDayLength + 
+               PercSoilClay + Month, family = quasipoisson(link = "log"), data = Rabbit_WA)
+summary(m1_WA)
+par(mfrow = c(2,2))
+plot(m2_WA, which = c(1,3,4))
+plot(resid(m2_WA, type = "deviance"))
+```
+
+The dispersion parameter is extremely large making it rather unrealistic, point to note that there are no more influential observations. This happened with the last model but after removing the interaction term the dispersion parameter became more reasonable (but still large). 
+```{r, WA model selection 1}
+m3_WA = glm(Occurences ~ Abund.3_ln +  DistPermWater + DistAgriLand + VegeType + VarDayLength + 
+               PercSoilClay + Month, family = quasipoisson(link = "log"), data = Rabbit_QLD)
+drop1(m3_WA, test = "Chisq")
+```
+
+The additive term with the largest non-significant p-value was month, as such it was removed from the model and the model was re-fitted.
+```{r, WA model selection 2}
+m4_WA = update(m3_WA, drop.terms(m3_WA$terms, 7, keep.response = TRUE))
+drop1(m4_WA, test = "Chisq")
+```
+
+The only non-significant term in the model was **VarDayLength**, as such it was removed from the model and the model was re-fitted.
+```{r, model selection 3}
+m5_WA = update(m4_WA, drop.terms(m4_WA$terms, 5, keep.response = TRUE))
+drop1(m5_WA, test = "Chisq")
+```
+
+All terms in the model are now significant. I will now create diagnostic plots and do the analysis of the model.
+```{r, WA final model}
+final_WA = m5_WA
+summary(final_WA)
+anova(final_WA, test = "Chisq")
+par(mfrow = c(2,2))
+plot(final_WA, which = c(1,3,4))
+plot(resid(final_WA, type = "deviance"))
+```
+
+The model suggests that not all habitat types have a significant effect on rabbit occurence, something I will look into further with pairwise comparisons, the dispersion parameter seems more reasonable but still wildly over-estimated, and residuals are independent.
+
+As **VegeType** is a factor, post-hoc pairwise comparisons were done for this variable only. 
+```{r, WA post-hoc testing}
+final_WA_emm = emmeans(final_WA, "VegeType", type = "response")
+final_WA_emm
+pairs(final_WA_emm)
+contrast(final_WA_emm, type = "response")
+plot(contrast(final_WA_emm, type = "response"))
+plot(pairs(final_WA_emm))
+```
+
+### Victoria
+
+#### GDE
+
+First, I want to know what vegetation types are present in New South Wales so I will just plot the variable. I then also want to remove NA values for plotting purposes. 
+```{r, VIC GDE}
+plot(log(Occurences) ~ VegeType, data = Rabbit_VIC)
+summary(Rabbit_VIC)
+
+Rabbit_VIC$Abund.3_ln = log(Rabbit_VIC$Abund.3)
+Rabbit_VIC2= Rabbit_VIC[complete.cases(Rabbit_VIC[, 9:37]), ]
+summary(Rabbit_VIC2)
+```
+
+The boxplot suggests that the Victoria data set has all 3 habitat types but no data on diseases or any of the animal variables. 
+
+#### Statistical Analysis 
+
+As usual, I will start by fitting a simple poisson glm with the candidate predators. 
+```{r, VIC model building 1}
+m1_VIC = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = poisson(link = "log"), data = Rabbit_VIC)
+summary(m1_VIC)
+```
+
+Now lets do some model diagnostic plots
+```{r, VIC model diagnostics 1}
+par(mfrow = c(2,2))
+plot(m1_VIC, which = c(1,3,4))
+plot(resid(m1_VIC, type = "deviance"))
+dispersion_VIC = 8202115/78611
+dispersion_VIC
+```
+
+There are some very very influential residuals that I will remove and see what there effect on the model is 
+```{r, VIC removing influential points}
+#cooksd = cooks.distance(m1_WA)
+#influential = as.numeric(names(cooksd)[(cooksd > 1)])
+#Rabbit_VIC2 = Rabbit_VIC[-influential, ]
+```
+
+This removes all rows from the data set, I will try dealing with the over-dispersion and see if this helps with the influential residuals
+```{r, VIC model building 2}
+m2_VIC = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = quasipoisson(link = "log"), data = Rabbit_VIC)
+summary(m2_VIC)
+par(mfrow = c(2,2))
+plot(m2_VIC, which = c(1,3,4))
+plot(resid(m2_VIC, type = "deviance"))
+```
+
+The influential residuals have been dealt with but the dispersion parameter has been extremely over-estimated as has been the case in previous models.
+```{r, VIC model selection 1}
+m3_VIC = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = quasipoisson(link = "log"), data = Rabbit_VIC)
+drop1(m3_VIC, test = "Chisq")
+```
+
+The only non-significant term was **DistPermWater**, as such it was removed from the model and the model was re-fitted.
+```{r, VIC model selection 2}
+m4_VIC = update(m3_VIC, drop.terms(m3_VIC$terms, 4, keep.response = TRUE))
+drop1(m4_VIC, test = "Chisq")
+```
+
+All terms are now significant and we can use this as the final model and do model analysis.
+```{r, VIC final model}
+final_VIC = m4_VIC
+summary(final_VIC)
+anova(final_VIC, test = "Chisq")
+par(mfrow = c(2,2))
+plot(final_VIC, which = c(1,3,4))
+plot(resid(final_VIC, type = "deviance"))
+```
+
+The final model suggests that not all vegetation types have significantly different number of rabbit occuresences whilst all months do. The model diagnostics suggest that the dispersion parameter estimate (about 579) is alot more reasonable and the residuals look independent. 
+
+As **VegeType** and **Month** are factors, post-hoc pairwise comparisons were done on each of them. First, the post-hoc analysis for **VegeType**.
+```{r, VIC post-hoc testing for VegeType}
+final_VIC_emm1 = emmeans(final_VIC, "VegeType", type = "response")
+final_VIC_emm1
+pairs(final_VIC_emm1)
+contrast(final_VIC_emm1, type = "response")
+plot(contrast(final_VIC_emm1, type = "response"))
+plot(pairs(final_VIC_emm1))
+```
+
+Now the post-hoc analysis for **Month**
+```{r, VIC post-hoc testing for Month}
+final_VIC_emm2 = emmeans(final_VIC, "Month", type = "response")
+final_VIC_emm2
+pairs(final_VIC_emm2)
+contrast(final_VIC_emm2, type = "response")
+plot(contrast(final_VIC_emm2, type = "response"))
+plot(pairs(final_VIC_emm2))
+```
+
+This concludes the analysis of the states and territories of Australia
+
+## Transect Scale statistical Analysis
+
+### North-South Transects
+
+#### GDE
+
+The same set of canidate predictors will be used in the transect scale analysis but as the transects span over the entire country and through all the states and territories I will need to control for the variation associated with these variables by using random effects. I am still using the occurence data, as such the data are counts and a poisson error distribution would be most appropriate. In order to have random effects and a non-normal error distribution I will need to use generalised linear mixed effects models (GLMMs), for which I will use the *glmer()* function from the *lme4* package.
+
+First, I want to plot boxplots for the predictors that I will have as random effects (i.e **State** and **Transect**)
+```{r, NS plotting random effects variables}
+par(mfrow = c(1,2))
+boxplot(log(Occurences) ~ State, data = NS)
+boxplot(log(Occurences) ~ Transect, data = NS)
+```
+
+There is quite a lot of variation in the response variable according to both **State** and **Transect** suggesting that I am right to control for the effect of these variables. Next, I want to know what variables I have data for in terms of the canidate predictors.
+```{r, NS data summary}
+summary(NS)
+boxplot(log(Occurences) ~ VegeType, data = NS)
+```
+
+There is very little absence data for the animal factors and **Diseases** has no data on RHDV2 and little data on when there were no diseases introduced. As such I will exclude these variables from the most complex model. **VegeType** also has no data for rainforests/vine thickets, swamps/salt marshes/mangroves, closed forest/tall shrubland or water habitats. This is likely due to the large distances between transects, 5 degrees longitude is approximately 557km.
+
+Finally, I will produce conditional plots of the numeric candidate predictors against the random effects to see whether a random slopes model would be justified. 
+```{r, NS random slopes coplots}
+# Create abund.3_ln variable for NS
+NS$Abund.3_ln = log(NS$Abund.3)
+
+# Random Slopes for State
+for(i in NS[, 9:27]){
+  coplot(log(Occurences) ~ i | State, rows = 1, 
+         data = NS)
+  Sys.sleep(1)
+}
+
+# Random Slopes for Transect
+for(i in NS[, 9:27]){
+  coplot(log(Occurences) ~ i | Transect, rows = 1, 
+         data = NS)
+  Sys.sleep(1)
+}
+
+# Random Slope Co-Plots involving Abundance
+coplot(log(Occurences) ~ Abund.3_ln | State, rows = 1, 
+       data = NS)
+coplot(log(Occurences) ~ Abund.3_ln | Transect, rows = 1, 
+       data = NS)
+```
+
+```{r, NS model building 1}
+m1_NS = glmer(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr + (1|State) + (1|Transect), 
+              family = poisson(link = "log"), data = NS)
+summary(m1_NS)
+```
+
+The standard deviation associated with **State** is very small (only about 0.3), suggesting that it could be dropped from the model. However, before making a decision I will plot model diagnostics first.
+```{r, NS model diagnostics 1}
+NS_res1 = residuals(m1_NS, type = "deviance")
+NS_fit1 = fitted(m1_NS)
+plot(NS_res1 ~ NS_fit1)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(NS_res1)
+plot(NS_res1 ~ State, data = NS)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(NS_res1 ~ Transect, data = NS)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+```
+
+The dispersion parameter is not displayed for glmer objects but I can manually calculate it by using a function from Ben Bolker and colleagues page on GLMM FAQs. 
+```{r, NS dispersion parameter}
+overdisp_fun = function(model) {
+    rdf = df.residual(model)
+    rp = residuals(model,type="pearson")
+    Pearson.chisq <- sum(rp^2)
+    prat = Pearson.chisq/rdf
+    pval = pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
+    c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
+}
+overdisp_fun(m1_NS)
+```
+
+The diagnostic plots suggests that the residuals are independent and that there is not much over-dispersion in the data (despite the calculated dispersion parameter, likely due to bias due to random effects). 
+
+I will now move on to model selection for the random effects, it is recommended that when random effects are in a model that the likelihood ratio test is used for model selection. 
+```{r, NS model random effects selection}
+m2_NS = glmer(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr + (1|State), 
+              family = poisson(link = "log"), data = NS)
+m3_NS = glmer(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr + (1|Transect), 
+              family = poisson(link = "log"), data = NS)
+#m4_NS = glmer(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+#              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+#              A_TSea_Avg30Yr, family = poisson(link = "log"), data = NS)
+anova(m1_NS, m2_NS, m3_NS, test = "Chisq")
+```
+
+The results of the LRT suggest that the model where **Transect** is the only random effect was the best fitting model, as such **State** was dropped as a random effect from the model and the model re-fitted. For fixed-effect model selection it is recommended that GLMMs are re-fitted using maximum likelihood (ML) instead of the default restricted maximum likelihood (REML) and once the model is fully simplified re-fit the final model using REML, but this is not possible for GLMMs so the bias is noted instead of avoided. 
+```{r, NS fixed effects model selection 1}
+#drop1(m3_NS, test = "Chisq")
+```
+
+This resulted in the following errors.
+fixed-effect model matrix is rank deficient so dropping 1 column / coefficient
+Warning in (function (fn, par, lower = rep.int(-Inf, n), upper = rep.int(Inf,  :
+  failure to converge in 10000 evaluations
+Warning in optwrap(optimizer, devfun, start, rho$lower, control = control,  :
+  convergence code 4 from Nelder_Mead: failure to converge in 10000 evaluations
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  unable to evaluate scaled gradient
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  Model failed to converge: degenerate  Hessian with 1 negative eigenvalues
+fixed-effect model matrix is rank deficient so dropping 1 column / coefficient
+Warning in (function (fn, par, lower = rep.int(-Inf, n), upper = rep.int(Inf,  :
+  failure to converge in 10000 evaluations
+Warning in optwrap(optimizer, devfun, start, rho$lower, control = control,  :
+  convergence code 4 from Nelder_Mead: failure to converge in 10000 evaluations
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  unable to evaluate scaled gradient
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  Model failed to converge: degenerate  Hessian with 1 negative eigenvalues
+fixed-effect model matrix is rank deficient so dropping 1 column / coefficient
+Warning in (function (fn, par, lower = rep.int(-Inf, n), upper = rep.int(Inf,  :
+  failure to converge in 10000 evaluations
+Warning in optwrap(optimizer, devfun, start, rho$lower, control = control,  :
+  convergence code 4 from Nelder_Mead: failure to converge in 10000 evaluations
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  unable to evaluate scaled gradient
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  Model failed to converge: degenerate  Hessian with 1 negative eigenvalues
+fixed-effect model matrix is rank deficient so dropping 1 column / coefficient
+Warning in (function (fn, par, lower = rep.int(-Inf, n), upper = rep.int(Inf,  :
+  failure to converge in 10000 evaluations
+Warning in optwrap(optimizer, devfun, start, rho$lower, control = control,  :
+  convergence code 4 from Nelder_Mead: failure to converge in 10000 evaluations
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  unable to evaluate scaled gradient
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  Model failed to converge: degenerate  Hessian with 1 negative eigenvalues
+fixed-effect model matrix is rank deficient so dropping 1 column / coefficient
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  unable to evaluate scaled gradient
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  Model failed to converge: degenerate  Hessian with 1 negative eigenvalues
+fixed-effect model matrix is rank deficient so dropping 1 column / coefficient
+Warning in (function (fn, par, lower = rep.int(-Inf, n), upper = rep.int(Inf,  :
+  failure to converge in 10000 evaluations
+Warning in optwrap(optimizer, devfun, start, rho$lower, control = control,  :
+  convergence code 4 from Nelder_Mead: failure to converge in 10000 evaluations
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  unable to evaluate scaled gradient
+Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  Model failed to converge: degenerate  Hessian with 1 negative eigenvalues
+Error in drop1.merMod(m3_NS, test = "Chisq") : 
+  number of rows in use has changed: remove missing values?
+  
+As such LRT is proving un-usable so I will have to use AIC even though I have been using LRT previously and this is highly discouraged. I also need to contrsuct all the possible models by hand, then use the *aictab()* function from the **AICcmodavg** package. 
+```{r, NS fixed effects model selection 2}
+# Create the models and store them as a list
+anova(m3_NS)
+```
+
+As **Month** and **VegeType** are factors I did post-hoc pairwise comparisons for **Month** only as it is not in an interaction, but first I looked at the interaction between **VegeType** and **DistAgriLand**. 
+```{r, NS interaction analysis}
+emtrends(m3_NS, pairwise ~ VegeType, var = "DistAgriLand")
+emmip(m3_NS, VegeType ~ DistAgriLand)
+```
+
+The interaction plot shows that there is very little data used to estimate the interaction suggesting that it should be dropped. This is what I did and I re-fitted the model.
+```{r, NS fixed part model selection 2}
+m4_NS = glmer(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr + (1|Transect), 
+              family = poisson(link = "log"), data = NS)
+summary(m4_NS)
+anova(m4_NS)
+```
+
+The term with the largest non-significant p-value is **A_Psea_Avg30Yr**, as such it was dropped from the model and the model was re-fitted.
+```{r, NS fixed part model selection 3}
+m5_NS = glmer(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + 
+              A_TSea_Avg30Yr + (1|Transect), 
+              family = poisson(link = "log"), data = NS)
+summary(m5_NS)
+```
+
+The only non-significant term was **DistAgriLand**, as such it was removed from the model and the model was re-fitted.
+```{r, NS fixed part model selection 4}
+m6_NS = glmer(Occurences ~ scale(Abund.3_ln) + scale(A_Prec_Avg30Yr) + scale(A_TAvg_Avg30Yr) +
+              scale(DistPermWater) + VegeType + scale(VarDayLength) + scale(PercSoilClay) + Month + 
+              scale(A_TSea_Avg30Yr) + (1|Transect), 
+              family = poisson(link = "log"), data = NS)
+summary(m6_NS)
+```
+
+All terms are now significant suggesting that this should be our final model, now I will run final model diagnostics and model analysis. 
+```{r, NS final model}
+final_NS = m6_NS
+NS_res2 = residuals(final_NS, type = "deviance")
+NS_fit2 = fitted(final_NS)
+plot(NS_res2 ~ NS_fit2)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(NS_res2)
+overdisp_fun(final_NS)
+Anova(final_NS)
+```
+
+Model diagnostics look okay with little over-dispersion and independent residuals. Now, I will move on to post-hoc pairwise comparison analysis as **Month** and **VegeType** are both factors.
+```{r, NS post-hoc testing for VegeType}
+final_NS_emm1 = emmeans(final_NS, "VegeType", type = "response")
+final_NS_emm1
+pairs(final_NS_emm1)
+contrast(final_NS_emm1, type = "response")
+plot(contrast(final_NS_emm1, type = "response"))
+plot(pairs(final_NS_emm1))
+```
+
+Now for the **Month** post-hoc analysis.
+```{r, NS post-hoc testing for Month}
+final_NS_emm2 = emmeans(final_NS, "Month", type = "response")
+final_NS_emm2
+pairs(final_NS_emm2)
+contrast(final_NS_emm2, type = "response")
+plot(contrast(final_NS_emm2, type = "response"))
+plot(pairs(final_NS_emm2))
+```
+
+The contrasts for **VegeType** suggest that all vegetation types in the data are perfered over cleared/naturally bare habitats. As for month, there are significantly more rabbit occurences in non-summer months.
+
+### East-West Transects
+
+#### GDE
+
+First, I want to plot boxplots for the predictors that I will have as random effects (i.e **State** and **Transect**)
+```{r, EW plotting random effects variables}
+par(mfrow = c(1,2))
+boxplot(log(Occurences) ~ State, data = EW)
+boxplot(log(Occurences) ~ Transect, data = EW)
+```
+
+There is not a lot of variation in the response variable according to both **State** and **Transect** suggesting that I am not right to control for the effect of these variables. Next, I want to know what variables I have data for in terms of the canidate predictors.
+```{r, EW data summary}
+summary(EW)
+boxplot(log(Occurences) ~ VegeType, data = EW)
+```
+
+There is very little absence data for the animal factors and **Diseases** has no data on RHDV2 and little data on when there were no diseases introduced. As such I will exclude these variables from the most complex model. **VegeType** also has no data for rainforests/vine thickets and swamps/salt marshes/mangroves. This is likely due to the large distances between transects, 5 degrees latitude is approximately 557km.
+
+Finally, I will produce conditional plots of the numeric candidate predictors against the random effects to see whether a random slopes model would be justified. 
+```{r, EW random slopes coplots}
+# Create abund.3_ln variable for EW
+EW$Abund.3_ln = log(EW$Abund.3)
+
+# Random Slopes for State
+for(i in EW[, 9:27]){
+  coplot(log(Occurences) ~ i | State, rows = 1, 
+         data = EW)
+  Sys.sleep(1)
+}
+
+# Random Slopes for Transect
+for(i in EW[, 9:27]){
+  coplot(log(Occurences) ~ i | Transect, rows = 1, 
+         data = EW)
+  Sys.sleep(1)
+}
+
+# Random Slope Co-Plots involving Abundance
+coplot(log(Occurences) ~ Abund.3_ln | State, rows = 1, 
+       data = EW)
+coplot(log(Occurences) ~ Abund.3_ln | Transect, rows = 1, 
+       data = EW)
+```
+
+The coplots suggest that there is no differences in slopes of the continuous candidate predictors and the random effects suggesting a random slopes and random intercepts model is not appropriate. 
+
+#### Statistical Modelling
+
+The first model I fitted was a poisson GLMM with **State** and **Transect** as random effects
+```{r, EW model building 1}
+m1_EW = glmer(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr + (1|State) + (1|Transect), 
+              family = poisson(link = "log"), data = EW)
+summary(m1_EW)
+```
+
+Now lets look at the model diagnostics
+```{r, EW model diagnostics 1}
+EW_res1 = residuals(m1_EW, type = "deviance")
+EW_fit1 = fitted(m1_EW)
+plot(EW_res1 ~ EW_fit1)
+abline(h = 0, col = 2, lty = 2, lwd = 2)
+plot(EW_res1)
+overdisp_fun(m1_EW)
+```
+
+The model diagnostics suggests a big issue with over-dispersion, but as quasi-poisson GLMMs are not possible in *lme4* so I will fit a negative binomial GLMM and except that it is a comprimise between fit and over-dispersion. However, this failed to converge so I tried a quasi-poisson GLMM in *glmmTMB* but these models failed to converge due to the standard deviation of the random effects being effectively 0.
+
+As such I removed the random effects and fitted a quasi-poisson glm to the data.
+```{r, EW model building 2}
+m2_EW = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand*VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = quasipoisson(),  data = EW)
+summary(m2_EW)
+```
+
+The interaction term was not significant, as such it was removed from the model and the model was re-fitted.
+```{r, EW model selection 1}
+m3_EW = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = quasipoisson(),  data = EW)
+drop1(m3_EW, test = "Chisq")
+```
+
+No additive terms were significant and all had the same p-value. I chose to remove **PercSoilClay** from the model and re-fitted the model.
+```{r, EW model selection 2}
+m4_EW = update(m3_EW, drop.terms(m3_EW$terms, 8, keep.response = TRUE))
+drop1(m4_EW, test = "Chisq")
+```
+
+No additive terms were significant and all had the same p-value. I chose to remove **DistAgriLand** from the model and re-fitted the model.
+```{r, EW model selection 3}
+m5_EW = update(m4_EW, drop.terms(m4_EW$terms, 5, keep.response = TRUE))
+drop1(m5_EW, test = "Chisq")
+```
+
+No additive terms were significant and all had the same p-value. I chose to remove **VarDayLength** from the model and re-fitted the model.
+```{r, EW model selection 4}
+m6_EW = update(m5_EW, drop.terms(m5_EW$terms, 6, keep.response = TRUE))
+drop1(m6_EW, test = "Chisq")
+```
+
+No additive terms were significant and all had the same p-value. I chose to remove **** from the model and re-fitted the model.
+```{r, EW model selection 5}
+m7_EW = update(m6_EW, drop.terms(m6_EW$terms, 8, keep.response = TRUE))
+drop1(m7_EW, test = "Chisq")
+```
+
+No additive terms were significant and all had the same p-value. I chose to remove **** from the model and re-fitted the model.
+```{r, EW model selection 6}
+m8_EW = update(m7_EW, drop.terms(m7_EW$terms, 7, keep.response = TRUE))
+drop1(m8_EW, test = "Chisq")
+```
+
+No additive terms were significant and all had the same p-value. I chose to remove **** from the model and re-fitted the model.
+```{r, EW model selection 7}
+m9_EW = update(m8_EW, drop.terms(m8_EW$terms, 6, keep.response = TRUE))
+drop1(m9_EW, test = "Chisq")
+```
+
+No additive terms were significant and all had the same p-value. I chose to remove **** from the model and re-fitted the model.
+```{r, EW model selection 8}
+m10_EW = update(m9_EW, drop.terms(m9_EW$terms, 1, keep.response = TRUE))
+drop1(m10_EW, test = "Chisq")
+```
+
+No additive terms were significant and all had the same p-value. I chose to remove **** from the model and re-fitted the model.
+```{r, EW model selection 9}
+m11_EW = update(m10_EW, drop.terms(m10_EW$terms, 1, keep.response = TRUE))
+drop1(m11_EW, test = "Chisq")
+```
+
+No additive terms were significant and all had the same p-value. I chose to remove **** from the model and re-fitted the model.
+```{r, EW model selection 10}
+m12_EW = update(m11_EW, drop.terms(m11_EW$terms, 1, keep.response = TRUE))
+drop1(m12_EW, test = "Chisq")
+```
+
+No additive terms were significant and all had the same p-value. I chose to remove **** from the model and re-fitted the model.
+```{r, EW model selection 11}
+m13_EW = update(m12_EW, drop.terms(m12_EW$terms, 1, keep.response = TRUE))
+drop1(m13_EW, test = "Chisq")
+```
+
+Only, **VegeType** was left in the model and it was significant. This was taken as the final model with final model diagnostics and analysis done. 
+```{r, EW final model}
+final_EW = m13_EW
+summary(final_EW)
+anova(final_EW, test = "Chisq")
+par(mfrow = c(2,2))
+plot(final_EW, which = c(1,3,4))
+plot(resid(final_EW, type = "deviance"))
+```
+
+The dispersion parameter seems to be underestimating the over-dispersion in the data (phi = 259 instead of 500), there was a residual with leverage 1, suggesting it is very extreme and all the residuals were negative. This model has many issues to take into account when interpreting results.
+
+As **VegeType** is a factor, post-hoc pairwise comparison analysis was done. 
+```{r, EW post-hoc testing}
+final_EW_emm = emmeans(final_EW, "VegeType", type = "response")
+final_EW_emm
+pairs(final_EW_emm)
+contrast(final_EW_emm, type = "response")
+plot(contrast(final_EW_emm, type = "response"))
+plot(pairs(final_EW_emm))
+```
+
+Only selected comparisons with cleared/naturally bare (**VegeType11**) were significantly different from 0. This concludes the transect scale analysis. 
+
+## Australia Scale Analysis
+
+I tried analysing the full data set both on my laptop and on a university computer but in both cases the system kept crashing. This was most likely due to there being nearly 690 000 observations in the data set. My solution is to take a 5000 random sample from the data set and analyse this instead. To make sure this sample is representative I will take 40 such samples and see if the same terms keep returning as significant. If this is not the case, my supervisor agrees that the Australia scale data cannot be analysed. 
+
+To create the random samples I will use the **sample()** function from *base* R and to repeatedly run the models and return the model summary I will use **lapply()** also from *base* R which will be more efficent in speed than a simple for loop. To use the **lapply()** function I will create a list object with all of the sample data sets and a function to get the model summary. The output of the function should be a model summary for each model presented as a list.
+
+First, I will make the list.
+```{r, AUS data frame list}
+#First create the Abund.3_ln variable
+Rabbit$Abund.3_ln = log(Rabbit$Abund.3)
+
+#Create the List
+z = list()
+
+z[[1]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[2]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[3]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[4]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[5]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[6]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[7]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[8]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[9]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[10]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[11]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[12]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[13]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[14]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[15]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[16]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[17]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[18]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[19]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[20]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[21]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[22]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[23]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[24]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[25]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[26]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[27]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[28]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[29]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[30]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[31]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[32]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[33]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[34]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[35]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[36]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[37]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[38]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[39]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+z[[40]] = Rabbit[sample(nrow(Rabbit), 5000, replace = FALSE, prob = NULL), ]
+```
+
+Next, I will create the model summary function which I will call **mod.sum()**
+```{r, AUS model summary function}
+mod.sum = function(x){
+  coef(summary(
+    glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = poisson(link = "log"), data = x)
+  ))
+}
+```
+
+Now I will do the analysis.
+```{r, AUS checking sample is representative}
+lapply(X = z, FUN = mod.sum)
+```
+
+The results suggested that all significant terms in the first model remained significant in subsequent models. What did occasionally change was the significance of the difference in the response variable between vegetation types but this is not indicative of a large issue more of variablitity in data quality. I also had to remove the interaction between **DistAgriLAnd** and **VegeType** as it was resulting in convergence failures and standard errors of 0. 
+
+I will use the first sub-sample of the data as the data set for the analysis.
+```{r, AUS selecting sub-sample}
+Rabbit_sample = z[[1]]
+summary(Rabbit_sample)
+```
+
+There was little absence data for the animal variables and so were excluded and the **Diseases** variabled lacked data in levels 0 and 3.
+
+Now for the statistical analysis. First, I fitted a simple poisson glm to the data
+```{r, AUS model building 1}
+m1_AUS = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = poisson(link = "log"), data = Rabbit_sample)
+summary(m1_AUS)
+```
+
+All terms were significant (as expected given the previous analysis) but there does appear to be over-dispersion in the data, phi = 694.2. I will now do the model diagnostics
+```{r, AUS model diagnostics 1}
+par(mfrow = c(2,2))
+plot(m1_AUS, which = c(1,3,4))
+plot(resid(m1_AUS, type = "deviance"))
+```
+
+The residuals look independent but there are extreme values in the data set. The diagnostic plots also confirm that there is over-dispersion in the residuals. To try and account for the over-dispersion I will now fit a quasi-poisson glm.
+```{r, AUS model building 2}
+m2_AUS = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = quasipoisson(link = "log"), data = Rabbit_sample)
+summary(m2_AUS)
+
+par(mfrow = c(2,2))
+plot(m2_AUS, which = c(1,3,4))
+plot(resid(m2_AUS, type = "deviance"))
+```
+
+The only term that remained significant was **Abund.3_ln** but the issues of over-dispersion and influential residuals was dealt with. The dispersion parameter was over-estimated at 340816 instead of 694. I then moved on to model selection.
+```{r, AUS model selection 1}
+drop1(m2_AUS, test = "Chisq")
+```
+
+The largest non-significant additive term was **Month**, as such it was removed from the model and the model was re-fitted.
+```{r, AUS model selection 2}
+m3_AUS = update(m2_AUS, drop.terms(m2_AUS$terms, 9, keep.response = TRUE))
+drop1(m3_AUS, test = "Chisq")
+```
+
+The additive term with the largest non-significant p-value was **A_Prec_Avg30Yr**, as such it was removed from the model and the model was re-fitted.
+```{r, AUS model selection 3}
+m4_AUS = update(m3_AUS, drop.terms(m3_AUS$terms, 2, keep.response = TRUE))
+drop1(m4_AUS, test = "Chisq")
+```
+
+All terms are now significant in the model, as such this was choosen as the final model where final diagnostics and model analysis was performed. 
+```{r, AUS final}
+final_AUS = m4_AUS
+summary(final_AUS)
+anova(final_AUS, test = "Chisq")
+
+par(mfrow = c(2,2))
+plot(final_AUS, which = c(1,3,4))
+plot(resid(final_AUS, type = "deviance"))
+```
+
+The dispersion parameter estimate has reduced but is still over-estimated. All other model diagnostics are satisfactory though. 
+
+As **VegeType** is a factor, post-hoc pairwise comparison analysis was done on this variable only
+```{r, AUS post-hoc testing}
+final_AUS_emm = emmeans(final_AUS, "VegeType", type = "response")
+final_AUS_emm
+pairs(final_AUS_emm)
+contrast(final_AUS_emm, type = "response")
+plot(contrast(final_AUS_emm, type = "response"))
+plot(pairs(final_AUS_emm))
+```
+
+This concludes the Australia scale data set analysis and the analysis of data over all. In the next section I will be plotting the predictions of the various final models.
+
+## Plotting Results
+
+In this section I will plot the results of the models I have built and will be used to produce my masters thesis. Due to the NA values in the original data but also personal preference I will be using *ggplot2* to create the plots. 
+
+First, I will gather the models I have created in order to make the model predictions.
+```{r, Plotting gathering the models}
+final_ACT2 = glm(Occurences ~ A_Prec_Avg30Yr + DistAgriLand + DistPermWater + A_TAvg_Avg30Yr, 
+                 family = quasipoisson(link = "log"), data = Rabbit_ACT)
+final_NSW = glm(formula = Occurences ~ Abund.3_ln + Month, 
+             family = quasipoisson(link = "log"), data = Rabbit_NSW)
+final_NT = glm(formula = Occurences ~ Abund.3_ln + VegeType, 
+             family = quasipoisson(link = "log"), data = Rabbit_NT)
+final_QLD  = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistPermWater + 
+              DistAgriLand + VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = quasipoisson(link = "log"), data = Rabbit_QLD)
+final_WA = glm(Occurences ~ Abund.3_ln + DistPermWater + DistAgriLand, 
+               family = quasipoisson(link = "log"), data = Rabbit_QLD)
+final_VIC = glm(Occurences ~ Abund.3_ln + A_Prec_Avg30Yr + A_TAvg_Avg30Yr + DistAgriLand +
+              VegeType + VarDayLength + PercSoilClay + Month + A_Psea_Avg30Yr + 
+              A_TSea_Avg30Yr, family = quasipoisson(link = "log"), data = Rabbit_VIC)
+final_AUS
+```
+
+Next, to get model predictions I will use the **predict()** function. The output will be a data frame containing the fitted values (fit) and standard errors (se.fit) as individual columns. I will then use the standard errors to create 95% confidence intervals using a home-made function **pois_ci()**.
+```{r, Plotting poisson confidence interval function}
+pois_ci = function(pred, data){
+fit = pred$fit
+lower = fit - 1.96*pred$se.fit
+upper = fit + 1.96*pred$se.fit
+
+return(data.frame(fit = exp(fit), lwr = exp(lower), upr = exp(upper), data))
+}
+```
+
+I also want to be able to put the model equation and the proportion of deviance explained by the model (D2) value on the plot. To do this I need to create a glm function called **glm.eq** which will extract the model coefficents and paste them onto the plot when called in **geom_text()**
+```{r, model equation function}
+pois_eqn = function(x, y, df){
+  m = glm(y ~ x, family = quasipoisson(link = "log"), data = df)
+  eq = substitute(italic(y) == e^(a + b %.% italic(x))*""~~italic(D)^2~"="~D2, 
+         list(a = format(unname(coef(m)[1]), digits = 2),
+              b = format(unname(coef(m)[2]), digits = 2),
+              D2 = format(Dsquared(m)*100, digits = 2)))
+    as.character(as.expression(eq));
+}
+```
+
+Now lets plot the predictions.
+```{r, ACT model predictions}
+#Create the data
+ACT_rain = data.frame(A_Prec_Avg30Yr = 
+                seq(from = min(Rabbit_ACT$A_Prec_Avg30Yr, na.rm = TRUE), 
+                    to = max(Rabbit_ACT$A_Prec_Avg30Yr, na.rm = TRUE),
+                    length.out = length(Rabbit_ACT$A_Prec_Avg30Yr)), 
+                DistAgriLand = median(Rabbit_ACT$DistAgriLand, na.rm = TRUE), 
+                DistPermWater = median(Rabbit_ACT$DistPermWater, na.rm = TRUE),
+                A_TAvg_Avg30Yr = median(Rabbit_ACT$A_TAvg_Avg30Yr, na.rm = TRUE)
+                )
+ACT_temp = data.frame(A_TAvg_Avg30Yr = 
+                        seq(from = min(Rabbit_ACT$A_TAvg_Avg30Yr, na.rm = TRUE), 
+                            to = max(Rabbit_ACT$A_TAvg_Avg30Yr, na.rm = TRUE), 
+                            length.out = length(Rabbit_ACT$A_TAvg_Avg30Yr)), 
+                      DistAgriLand = median(Rabbit_ACT$DistAgriLand, na.rm = TRUE), 
+                      DistPermWater = median(Rabbit_ACT$DistPermWater, na.rm = TRUE),
+                      A_Prec_Avg30Yr = median(Rabbit_ACT$A_Prec_Avg30Yr, na.rm = TRUE)
+                      )
+ACT_farm = data.frame(DistAgriLand = 
+                        seq(from = min(Rabbit_ACT$DistAgriLand, na.rm = TRUE), 
+                            to = max(Rabbit_ACT$DistAgriLand, na.rm = TRUE), 
+                            length.out = length(Rabbit_ACT$DistAgriLand)), 
+                      DistPermWater = median(Rabbit_ACT$DistPermWater, na.rm = TRUE),
+                      A_Prec_Avg30Yr = median(Rabbit_ACT$A_Prec_Avg30Yr, na.rm = TRUE),
+                      A_TAvg_Avg30Yr = median(Rabbit_ACT$A_TAvg_Avg30Yr, na.rm = TRUE)
+                      )
+ACT_water = data.frame(DistPermWater = 
+                         seq(from = min(Rabbit_ACT$DistPermWater, na.rm = TRUE), 
+                             to = max(Rabbit_ACT$DistPermWater, na.rm = TRUE), 
+                             length.out = length(Rabbit_ACT$DistPermWater)), 
+                       A_Prec_Avg30Yr = median(Rabbit_ACT$A_Prec_Avg30Yr, na.rm = TRUE),
+                       A_TAvg_Avg30Yr = median(Rabbit_ACT$A_TAvg_Avg30Yr, na.rm = TRUE), 
+                       DistAgriLand = median(Rabbit_ACT$DistAgriLand, na.rm = TRUE)
+                       )
+
+
+#Plot predictions for A_Prec_Avg30Yr
+preds.ACT_rain = predict(final_ACT2, newdata = ACT_rain, se.fit = TRUE, type = "link")
+preds.ACT_rain.ci = pois_ci(preds.ACT_rain, ACT_rain)
+ACT.a = ggplot(data = preds.ACT_rain.ci) + 
+  geom_point(data = Rabbit_ACT, aes(x = A_Prec_Avg30Yr, y = Occurences), 
+             position = position_jitter(w = 0.2, h = 0)) +
+  geom_line(aes(x = A_Prec_Avg30Yr, y = fit)) + 
+  geom_ribbon(aes(ymin = lwr, ymax = upr, x = A_Prec_Avg30Yr), alpha = 0.1) +
+  geom_text(x = 800, y = 15000, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_ACT$A_Prec_Avg30Yr, y = Rabbit_ACT$Occurences, df = Rabbit_ACT)) + 
+  labs(x = "Percipitation (mL)", y = "Rabbit Occurences") +
+  theme_customized()
+ACT.a
+
+#Plot predictions for A_TAvg_Avg30Yr
+preds.ACT_temp = predict(final_ACT2, newdata = ACT_temp, se.fit = TRUE, type = "link")
+preds.ACT_temp.ci = pois_ci(preds.ACT_temp, ACT_temp)
+xlab = expression("Temperature " ( degree*C))
+ACT.b = ggplot(data = preds.ACT_temp.ci) + 
+  geom_point(data = Rabbit_ACT, aes(x = A_TAvg_Avg30Yr, y = Occurences)) + 
+  geom_line(aes(x = A_TAvg_Avg30Yr, y = fit)) + 
+  geom_ribbon(aes(ymin = lwr, ymax = upr, x = A_TAvg_Avg30Yr, y = fit), alpha = 0.1) + 
+  geom_text(x = 15, y = 1e+05, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_ACT$A_TAvg_Avg30Yr, y = Rabbit_ACT$Occurences, df = Rabbit_ACT)) + 
+  labs(x = xlab, y = "Rabbit Occurences") + 
+  theme_customized()
+ACT.b
+
+#Plot the predictions of DistAgriLand
+preds.ACT_farm = predict(final_ACT2, newdata = ACT_farm, se.fit = TRUE, type = "link")
+preds.ACT_farm.ci = pois_ci(preds.ACT_farm, ACT_farm)
+ACT.c = ggplot(data = preds.ACT_farm.ci) + 
+  geom_point(data = Rabbit_ACT, aes(x = DistAgriLand, y = Occurences)) + 
+  geom_line(aes(x = DistAgriLand, y = fit)) + 
+  geom_ribbon(aes(ymin = lwr, ymax = upr, x = DistAgriLand, y = fit), alpha = 0.1) +
+  geom_text(x = 400, y = 5000, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_ACT$DistAgriLand, y = Rabbit_ACT$Occurences, df = Rabbit_ACT)) +
+  labs(x = "Distance to Farm (m)", y = "Rabbit Occurences") + 
+  theme_customized()
+ACT.c
+
+#Plot the predictions of DistPermWater
+preds.ACT_water = predict(final_ACT2, newdata = ACT_water, se.fit = TRUE, type = "link")
+preds.ACT_water.ci = pois_ci(preds.ACT_water, ACT_farm)
+ACT.d = ggplot(data = preds.ACT_water.ci) + 
+  geom_point(data = Rabbit_ACT, aes(x = DistPermWater, y = Occurences)) + 
+  geom_line(aes(x = DistPermWater, y = fit)) + 
+  geom_ribbon(aes(ymin = lwr, ymax = upr, x = DistPermWater, y = fit), alpha = 0.1) + 
+  geom_text(x = 50, y = 5000, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_ACT$DistPermWater, y = Rabbit_ACT$Occurences, df = Rabbit_ACT)) + 
+  labs(x = "Distance to Water (m)", y = "Rabbit Occurences") + 
+  theme_customized()
+ACT.d
+
+#Create the nested plot
+p.ACT = (ACT.a | ACT.b)/(ACT.c | ACT.d)
+p.ACT = p.ACT + plot_annotation(tag_levels = "A", tag_suffix = ")", tag_prefix = "(")
+p.ACT
+ggsave("Australian Capital Territory.png")
+```
+
+Next, I will move on to plotting the predictions for the New South Wales model. This model has a continuous variable and a factor but they do not interact. 
+```{r, NSW model predictions}
+#Create the data
+NSW_Abund = data.frame(Abund.3_ln = 
+                         seq(from = min(Rabbit_NSW$Abund.3_ln, na.rm = TRUE), 
+                             to = max(Rabbit_NSW$Abund.3_ln, na.rm = TRUE), 
+                             length.out = length(Rabbit_NSW$Abund.3_ln)),
+                       Month = Rabbit_NSW$Month)
+NSW_Month = data.frame(Month = factor(1:12), Abund.3_ln = median(Rabbit_NSW$Abund.3_ln, na.rm = TRUE))
+
+#Create the individual plot for Abund.3_ln
+preds.NSW_Abund = predict(final_NSW, newdata = NSW_Abund, se.fit = TRUE, type = "link")
+preds.NSW_Abund.ci = pois_ci(preds.NSW_Abund, NSW_Abund)
+NSW.a = ggplot(data = preds.NSW_Abund.ci) + 
+  geom_point(data = Rabbit_NSW, aes(x = Abund.3_ln, y = Occurences)) + 
+  geom_line(aes(x = Abund.3_ln, y = fit)) + 
+  geom_ribbon(aes(ymin = lwr, ymax = upr, x = Abund.3_ln, y = fit), alpha = 0.1) + 
+  geom_text(x = -5, y = 10000, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_NSW$Abund.3_ln, y = Rabbit_NSW$Occurences, Rabbit_NSW)) + 
+  labs(x = "Abundance on Natural Log Scale", y = "Rabbit Occurences") + 
+  theme_customized()
+#NSW.a
+
+#Create the individual plot for Month
+preds.NSW_Month = predict(final_NSW, newdata = NSW_Month, se.fit = TRUE, type = "link")
+preds.NSW_Month.ci = pois_ci(preds.NSW_Month, NSW_Month)
+xticks = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+NSW.b = ggplot(data = preds.NSW_Month.ci) + 
+  geom_point(aes(x = Month, y = fit)) + 
+  geom_errorbar(aes(x = Month, y = fit, ymin = lwr, ymax = upr)) + 
+  labs(x = "Month of Year", y = "Rabbit Occurences") + 
+  scale_x_discrete(labels = xticks) + 
+  theme_customized()
+NSW.b
+
+#Create the combined plot
+p.NSW = (NSW.a / NSW.b)
+p.NSW = p.NSW + plot_annotation(tag_levels = "A", tag_suffix = ")", tag_prefix = "(")
+p.NSW
+ggsave("New South Wales.png")
+```
+
+Now I will move on to plotting the model predictions for the Northern Territory
+```{r, NT model predictions}
+#Create the predictions
+preds.NT_Abund = ggpredict(final_NT, terms = "Abund.3_ln")
+preds.NT_Vege = ggpredict(final_NT, terms = "VegeType")
+
+#Create individual plot for abundance on the natural log scale
+p.NT1 = ggplot(data = preds.NT_Abund) + 
+  geom_point(data = Rabbit_NT, aes(x = Abund.3_ln, y = Occurences)) +
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = -3, y = 1e+12, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_NT$Abund.3_ln, y = Rabbit_NT$Occurences, df = Rabbit_NT)) + 
+  labs(x = "Abundance on Log Scale", y = "Rabbit Occurences") + 
+  theme_customized()
+#p.NT1
+
+#Create individual plot for vegetation type
+xticks3 = c("Rain Forest&\nVine Thickets", "Eucalyptus\nForest", "Eucalyptus\nWoodland", "Woodland", 
+            "Swamps&Salt\nMarshes & Magroves", "Closed Forests&\nTall Shrublands", "Shrublands", 
+            "Tussock\nGrassland", "Hummock\nGrassland", "Salt Bushes", "Cleared &\nNaturally Bare", 
+            "Water", "Other")
+p.NT2 = ggplot(data = preds.NT_Vege) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Vegetation Type", "Rabbit Occurences") + 
+  scale_x_discrete(label = xticks3) + 
+  theme_customized() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p.NT2
+#Create combined plot
+p.NT = (p.NT1 / p.NT2)
+p.NT = p.NT + plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+p.NT
+
+```
+
+Next, I will move on to plotting the model predictions for Queensland. 
+```{r, QLD model predictions}
+#Create the predictions
+preds.QLD_Abund = ggpredict(final_QLD, terms = "Abund.3_ln")
+preds.QLD_Vege = ggpredict(final_QLD, terms = "VegeType")
+preds.QLD_Month = ggpredict(final_QLD, terms = "Month")
+preds.QLD_Rain1 = ggpredict(final_QLD, terms = "A_Prec_Avg30Yr")
+preds.QLD_Temp1 = ggpredict(final_QLD, terms = "A_TAvg_Avg30Yr")
+preds.QLD_Water = ggpredict(final_QLD, terms = "DistPermWater")
+preds.QLD_Farm = ggpredict(final_QLD, terms = "DistAgriLand")
+preds.QLD_Day = ggpredict(final_QLD, terms = "VarDayLength")
+preds.QLD_Soil = ggpredict(final_QLD, terms = "PercSoilClay")
+preds.QLD_Rain2 = ggpredict(final_QLD, terms = "A_Psea_Avg30Yr")
+preds.QLD_Temp2 = ggpredict(final_QLD, terms = "A_TSea_Avg30Yr")
+
+#Create individual plot for abundance on the natural log scale
+p.QLD1 = ggplot(data = preds.QLD_Abund) + 
+  geom_point(data = Rabbit_QLD, aes(x = Abund.3_ln, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  labs(x = "Abundance on Log Scale", y = "Rabbit Occurences") + 
+  theme_customized()
+#p.QLD1
+
+#Create individual plot for month
+p.QLD2 = ggplot(data = preds.QLD_Month) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Month of Year", y = "Rabbit Occurences") + 
+  scale_x_discrete(label = xticks) + 
+  theme_customized()
+#p.QLD2
+
+#Create individual plot for vegetation type
+p.QLD3 = ggplot(data = preds.QLD_Vege) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  scale_x_discrete(label = xticks3) + 
+  theme_customized() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+#p.QLD3
+
+#Create individual plot for precipitation
+p.QLD4 = ggplot(data = preds.QLD_Rain1) + 
+  geom_point(data = Rabbit_QLD, aes(x = A_Prec_Avg30Yr, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 1000, y = 1e+10, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_QLD$A_Prec_Avg30Yr, y = Rabbit_QLD$Occurences, df = Rabbit_QLD)) + 
+  labs(x = "Precipitation (mL)", y = "Rabbit Occurences") + 
+  theme_customized()
+p.QLD4
+
+#Create individual plot for temperature
+p.QLD5 = ggplot(data = preds.QLD_Temp1) + 
+  geom_point(data = Rabbit_QLD, aes(x = A_TAvg_Avg30Yr, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 10, y = 3e+10, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_QLD$A_TAvg_Avg30Yr, y = Rabbit_QLD$Occurences, df = Rabbit_QLD)) + 
+  labs(x = xlab, y = "Rabbit Occurences") + 
+  theme_customized()
+p.QLD5
+
+#Create individual plot for precipitation seasonality
+p.QLD6 = ggplot(data = preds.QLD_Rain2) + 
+  geom_point(data = Rabbit_QLD, aes(x = A_Psea_Avg30Yr, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 25, y = 3e+11, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_QLD$A_Psea_Avg30Yr, y = Rabbit_QLD$Occurences, df = Rabbit_QLD)) + 
+  labs(x = "Precipitation Seasonality", y = "Rabbit Occurences") + 
+  theme_customized()
+p.QLD6
+
+#Create individual plot for temperature seasonality
+p.QLD7 = ggplot(data = preds.QLD_Temp2) + 
+  geom_point(data = Rabbit_QLD, aes(x = A_TSea_Avg30Yr, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 250, y = 2e+10, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_QLD$A_TSea_Avg30Yr, y = Rabbit_QLD$Occurences, df = Rabbit_QLD)) + 
+  labs(x = "Temperature Seasonality", "Rabbit Occurences") + 
+  theme_customized()
+p.QLD7
+
+#Create individual plot for distance to nearest farm land
+p.QLD8 = ggplot(data = preds.QLD_Farm) + 
+  geom_point(data = Rabbit_QLD, aes(x = DistAgriLand, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 250, y = 1.5e+10, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_QLD$DistAgriLand, y = Rabbit_QLD$Occurences, df = Rabbit_QLD)) + 
+  labs(x = "Distance to Nearest\nFarm (km)", y = "Rabbit Occurences") + 
+  theme_customized()
+p.QLD8
+
+#Create individual plot for distance to nearest permanent water feature
+p.QLD9 = ggplot(data = preds.QLD_Water) + 
+  geom_point(data = Rabbit_QLD, aes(x = DistPermWater, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 25, y = 1.25e+10, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_QLD$DistPermWater, y = Rabbit_QLD$Occurences, df = Rabbit_QLD)) + 
+  labs(x = "Distance to Nearest Permanent\nWater Feature (km)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.QLD9
+
+#Create individual plot for variability in day length
+p.QLD10 = ggplot(data = preds.QLD_Day) + 
+  geom_point(data = Rabbit_QLD, aes(x = VarDayLength, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 1, y = 4e+10, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_QLD$VarDayLength, y = Rabbit_QLD$Occurences, df = Rabbit_QLD)) + 
+  labs(x = "Variability in Day Length (hrs)", y = "Rabbit Occurrences") + 
+  theme_customized()
+#p.QLD10
+
+#Create individual plot for percentage clay in soil
+p.QLD11 = ggplot(data = preds.QLD_Soil) + 
+  geom_point(data = Rabbit_QLD, aes(x = PercSoilClay, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 15, y = 4e+10, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_QLD$PercSoilClay, y = Rabbit_QLD$Occurences, df = Rabbit_QLD)) + 
+  labs(x = "Percent Clay in Soil (%)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.QLD11
+
+```
+
+This concludes the plotting of model predictions for Queensland and I will now move on to plotting the predictions for Western Australia. 
+```{r, WA model predictions}
+#Create the model predictions
+preds.WA_Abund = ggpredict(final_WA, terms = "Abund.3_ln")
+preds.WA_Farm = ggpredict(final_WA, terms = "DistAgriLand")
+preds.WA_Water = ggpredict(final_WA, terms = "DistPermWater")
+
+#Create individual plot for abundance on the natural log scale
+p.WA1 = ggplot(data = preds.WA_Abund) + 
+  geom_point(data = Rabbit_WA, aes(x = Abund.3_ln, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = -5, y = 2e+5, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_WA$Abund.3_ln, y = Rabbit_WA$Occurences, df = Rabbit_WA)) + 
+  labs(x = "Abundance on Natural\nLog Scale", y = "Rabbit Occurrences") + 
+  theme_customized()
+#p.WA1
+
+#Create individual plot for distance to nearest farm
+p.WA2 = ggplot(data = preds.WA_Farm) + 
+  geom_point(data = Rabbit_WA, aes(x = DistAgriLand, y = Occurences)) +
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 255, y = 3e+05, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_WA$DistAgriLand, y = Rabbit_WA$Occurences, df = Rabbit_WA)) + 
+  labs(x = "Distance to Nearest\nFarm (km)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.WA2
+
+#Create individual plot for distance to nearest permanent water feature
+p.WA3 = ggplot(data = preds.WA_Water) + 
+  geom_point(data = Rabbit_WA, aes(x = DistPermWater, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 45, y = 50000, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_WA$DistPermWater, y = Rabbit_WA$Occurences, df = Rabbit_WA)) + 
+  labs(x = "Distance to Nearest\nPermanent Water Feature (km)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.WA3
+```
+
+This concludes plotting the model predictions for Western Australia, now I will move on to plotting the model predictions for Victoria. 
+```{r, VIC model predictions}
+#Create the predictions
+preds.VIC_Abund = ggpredict(final_VIC, terms = "Abund.3_ln")
+preds.VIC_Month = ggpredict(final_VIC, terms = "Month")
+preds.VIC_Vege = ggpredict(final_VIC, terms = "VegeType")
+preds.VIC_Rain1 = ggpredict(final_VIC, terms = "A_Prec_Avg30Yr")
+preds.VIC_Temp1 = ggpredict(final_VIC, terms = "A_TAvg_Avg30Yr")
+preds.VIC_Rain2 = ggpredict(final_VIC, terms = "A_Psea_Avg30Yr")
+preds.VIC_Temp2 = ggpredict(final_VIC, terms = "A_TSea_Avg30Yr")
+preds.VIC_Farm = ggpredict(final_VIC, terms = "DistAgriLand")
+preds.VIC_Day = ggpredict(final_VIC, terms = "VarDayLength")
+preds.VIC_Soil = ggpredict(final_VIC, terms = "PercSoilClay")
+
+#Create individual plot for abundance on the natural log scale
+p.VIC1 = ggplot(data = preds.VIC_Abund) + 
+  geom_point(data = Rabbit_VIC, aes(x = Abund.3_ln, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = -5, y = 50000, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_VIC$Abund.3_ln, y = Rabbit_VIC$Occurences, df = Rabbit_VIC)) + 
+  labs(x = "Abundance on the Natural\nLog Scale", y = "Rabbit Occurences") + 
+  theme_customized()
+#p.VIC1
+
+#Create individual plot for month
+p.VIC2 = ggplot(data = preds.VIC_Month) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Month of Year", y = "Rabbit Occurrences") + 
+  scale_x_discrete(label = xticks) + 
+  theme_customized()
+#p.VIC2
+
+#Create individual plot for vegetation type
+p.VIC3 = ggplot(data = preds.VIC_Vege) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Vegetation Type", y = "Rabbit Occurrences") + 
+  scale_x_discrete(label = xticks3) + 
+  theme_customized() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+#p.VIC3
+
+#Create individual plot for precipitation 
+p.VIC4 = ggplot(data = preds.VIC_Rain1) + 
+  geom_point(data = Rabbit_VIC, aes(x = A_Prec_Avg30Yr, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 800, y = 50000, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_VIC$A_Prec_Avg30Yr, y = Rabbit_VIC$Occurences, df = Rabbit_VIC)) + 
+  labs(x = "Precipitation (mL)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.VIC4
+
+#Create individual plot for temperature
+p.VIC5 = ggplot(data = preds.VIC_Temp1) + 
+  geom_point(data = Rabbit_VIC, aes(A_TAvg_Avg30Yr, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 8.5, y = 2.5e+05, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_VIC$A_TAvg_Avg30Yr, y = Rabbit_VIC$Occurences, df = Rabbit_VIC)) + 
+  labs(x = xlab, y = "Rabbit Occurences") + 
+  theme_customized()
+p.VIC5
+
+#Create individual plot for precipitation seasonality
+p.VIC6 = ggplot(data = preds.VIC_Rain2) + 
+  geom_point(data = Rabbit_VIC, aes(x = A_Psea_Avg30Yr, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_text(x = 45, y = 50000, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_VIC$A_Psea_Avg30Yr, y = Rabbit_VIC$Occurences, df = Rabbit_VIC)) +
+  labs(x = "Variablity in Precipitation", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.VIC6
+
+#Create individual plot for temperature seasonality
+p.VIC7 = ggplot(data = preds.VIC_Temp2) + 
+  geom_point(data = Rabbit_VIC, aes(x = A_TSea_Avg30Yr, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 300, y = 50000, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_VIC$A_TSea_Avg30Yr, y = Rabbit_VIC$Occurences, df = Rabbit_VIC)) + 
+  labs(x = "Temperature Seasonality", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.VIC7
+
+#create individual plot for distance to nearest farm
+p.VIC8 = ggplot(data = preds.VIC_Farm) + 
+  geom_point(data = Rabbit_VIC, aes(x = DistAgriLand, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 200, y = 50000, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_VIC$DistAgriLand, y = Rabbit_VIC$Occurences, df = Rabbit_VIC)) + 
+  labs(x = "Distance to Nearest\nFarm (km)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.VIC8
+
+#Create individual plot for variation in day length
+p.VIC9 = ggplot(data = preds.VIC_Day) + 
+  geom_point(data = Rabbit_VIC, aes(x = VarDayLength, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 1, y = 3e+05, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_VIC$VarDayLength, y = Rabbit_VIC$Occurences, df = Rabbit_VIC)) + 
+  labs(x = "Variability in Day Length (hrs)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.VIC9
+
+#Create individual plot for percentage clay in soil 
+p.VIC10 = ggplot(data = preds.VIC_Soil) + 
+  geom_point(data = Rabbit_VIC, aes(x = PercSoilClay, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 15, y = 50000, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_VIC$PercSoilClay, y = Rabbit_VIC$Occurrence, df = Rabbit_VIC)) + 
+  labs(x = "Percent of Clay in Soil (%)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.VIC10
+
+```
+
+Finally, I will plot the model predictions for the Australia-wide model.
+```{r, AUS model predictions}
+#Create the predictions
+preds.AUS_Abund = ggpredict(final_AUS, terms = "Abund.3_ln")
+preds.AUS_Vege = ggpredict(final_AUS, terms = "VegeType")
+preds.AUS_Temp1 = ggpredict(final_AUS, terms = "A_TAvg_Avg30Yr")
+preds.AUS_Temp2 = ggpredict(final_AUS, terms = "A_TSea_Avg30Yr")
+preds.AUS_Rain2 = ggpredict(final_AUS, terms = "A_Psea_Avg30Yr")
+preds.AUS_Farm = ggpredict(final_AUS, terms = "DistAgriLand")
+preds.AUS_Water = ggpredict(final_AUS, terms = "DistPermWater")
+preds.AUS_Day = ggpredict(final_AUS, terms = "VarDayLength")
+preds.AUS_Soil = ggpredict(final_AUS, terms = "PercSoilClay")
+
+#Create individual plot for abundance on the log scale
+p.AUS1 = ggplot(data = preds.AUS_Abund) + 
+  geom_point(data = Rabbit_sample, aes(x = Abund.3_ln, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = -5, y = 1.5e+13, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_sample$Abund.3_ln, y = Rabbit_sample$Occurences, df = Rabbit_sample)) + 
+  labs(x = "Abundance on the Natural\nLog Scale", y = "rabbit Occurrences") + 
+  theme_customized()
+p.AUS1
+
+#Create individual plot for vegetation type
+p.AUS2 = ggplot(data = preds.AUS_Vege) + 
+  geom_point(aes(x, y = predicted)) + 
+  geom_errorbar(aes(x, y = predicted, ymin = conf.low, ymax = conf.high)) + 
+  labs(x = "Vegetation Type", y = "Rabbit Occurrences") + 
+  scale_x_discrete(label = xticks3) + 
+  theme_customized() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p.AUS2
+
+#Create individual plot for temperature
+p.AUS3 = ggplot(data = preds.AUS_Temp1) + 
+  geom_point(data = Rabbit_sample, aes(x = A_TAvg_Avg30Yr, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 10, y = 1.0e+13, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_sample$A_TAvg_Avg30Yr, y = Rabbit_sample$Occurences, df = Rabbit_sample)) +  
+  labs(x = xlab, y = "Rabbit Occurrences") + 
+  theme_customized()
+p.AUS3
+
+#Create individual plot for temperature seasonality
+p.AUS4 = ggplot(data = preds.AUS_Temp2) + 
+  geom_point(data = Rabbit_sample, aes(x = A_TSea_Avg30Yr, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 250, y = 4e+12, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_sample$A_TSea_Avg30Yr, y = Rabbit_sample$Occurences, df = Rabbit_sample)) + 
+  labs(x = "Temperature Seasonality", y = "Rabbit Occurrences") +
+  theme_customized()
+p.AUS4
+
+#Create individual plot for distance to nearest farm
+p.AUS5 = ggplot(data = preds.AUS_Farm) + 
+  geom_point(data = Rabbit_sample, aes(x = DistAgriLand, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha= 0.2) + 
+  geom_text(x = 250, y = 1.5e+12, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_sample$DistAgriLand, y = Rabbit_sample$Occurences, df = Rabbit_sample)) + 
+  labs(x = "Distance to Nearest\nFarm (km)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.AUS5
+
+#Create an individual plot for distance to nearest permanent water feature
+p.AUS6 = ggplot(data = preds.AUS_Water) + 
+  geom_point(data = Rabbit_sample, aes(x = DistPermWater, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 50, y = 1.5e+12, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_sample$DistPermWater, y = Rabbit_sample$Occurences, df = Rabbit_sample)) + 
+  labs(x = "Distance to Nearest Permenent\nWater Feature (km)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.AUS6
+
+#Create individual plot for variation in day length
+p.AUS7 = ggplot(data = preds.AUS_Day) + 
+  geom_point(data = Rabbit_sample, aes(x = VarDayLength, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 1.5, y = 3.5e+12, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_sample$VarDayLength, y = Rabbit_sample$Occurences, df = Rabbit_sample)) + 
+  labs(x = "Variability in Day Length (hrs)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.AUS7
+
+#Create individual plot for percentage soil in clay
+p.AUS8 = ggplot(data = preds.AUS_Soil) + 
+  geom_point(data = Rabbit_sample, aes(x = PercSoilClay, y = Occurences)) + 
+  geom_line(aes(x, y = predicted)) + 
+  geom_ribbon(aes(x, y = predicted, ymin = conf.low, ymax = conf.high), alpha = 0.2) + 
+  geom_text(x = 15, y = 1.5e+12, parse = TRUE, 
+            label = pois_eqn(x = Rabbit_sample$PercSoilClay, y = Rabbit_sample$Occurences, df = Rabbit_sample)) + 
+  labs(x = "Percent Clay in Soil (%)", y = "Rabbit Occurrences") + 
+  theme_customized()
+p.AUS8
+
+```
+

@@ -1,0 +1,222 @@
+---
+title: "Species Pseudo-Absence Generation"
+author: "Dean Wilkinson"
+date: "06/01/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,tidy.opts=list(width.cutoff=30),tidy=TRUE)
+```
+
+## Introduction
+
+In this RMarkdown document I will be generating the pseudo-absences for each animal species that I have collected presence-only data for, from the Atlas of Living Australia (We acknowledge the use of the Atlas of Living Australia, grid.506668.b). This can be done by using the *randomPoints()* function from the *dismo* package by supplying the coordinates for the presence only data. The function does this by sampling without replacement from the presence-only coordinates to generate a knew set of coordinates where we say the species in question is absent from (insert citation). These sets of coordinates can then be used to generate a presence-absence data set, which will be converted into a factor of species occurrence and added to the data set that is the focus of the study. 
+
+The *randomPoints()* function has many arguements but for our prurposes we are only interested in 3, the *mask* , *ext* and *n* arguments. The *mask* argument is the raster object in which the presence-only coordinates are given and the *n* argument is the number of coordinate pairs to generate. The *ext* arguement streamlines the pseudo-absence generation to a specified range of coordinates. Once the absence  coordinates are generated they will be exported as *.csv* files, merged in excel and sorted according to year and then added to the main dataset. The only exception to this is the rabbit data which will be used to estimate the detection probability in the next RMarkdown document and along with the point counts will be used to generate abundance estimates for rabbits. 
+
+## Setting up R Environment and Data Preparation
+
+As I have never used the *dismo* package before, I need to install it and then load the package. This is the only package we will be using in this RMarkdown document.
+```{r, loading dismo}
+library(dismo)
+```
+
+To make it easier for me to read in my data sets I will retrieve my explicity working directory using the *getwd()* function.
+```{r, working directory}
+getwd()
+```
+
+Now I can read in my data sets.
+```{r, reading in the data sets}
+Dingo_Pres = read.table("E:/Masters Project/BI5002 (Masters Project)/Invasive European Rabbit Data/Dingo Data Coordinates.csv", sep = ",", header = TRUE)
+Cat_Pres = read.table("E:/Masters Project/BI5002 (Masters Project)/Invasive European Rabbit Data/Feral Cat Data Coordinates.csv", sep = ",", header = TRUE)
+Rabbit_Pres = read.table("E:/Masters Project/BI5002 (Masters Project)/Invasive European Rabbit Data/Rabbit Data Coordinates.csv", sep = ",", header = TRUE)
+Fox_Pres = read.table("E:/Masters Project/BI5002 (Masters Project)/Invasive European Rabbit Data/Red Fox Data Coordinates.csv", sep = ",", header = TRUE)
+Wallaby_Pres = read.table("E:/Masters Project/BI5002 (Masters Project)/Invasive European Rabbit Data/Wallaby Sp Data Coordinates.csv", sep = ",", header = TRUE)
+Kite_Pres = read.table("E:/Masters Project/BI5002 (Masters Project)/Invasive European Rabbit Data/Whistling Kite Data Coordinates.csv", sep = ",", header = TRUE)
+```
+
+We should check that the data have the correct structure and that the values look right
+```{r, checking the data sets}
+#Check the Structures
+str(Dingo_Pres)
+str(Cat_Pres)
+str(Rabbit_Pres)
+str(Fox_Pres)
+str(Wallaby_Pres)
+str(Kite_Pres)
+
+#Check the values
+head(Dingo_Pres)
+head(Cat_Pres)
+head(Rabbit_Pres)
+head(Fox_Pres)
+head(Wallaby_Pres)
+head(Kite_Pres)
+```
+
+For the *randomPoints()* function to work we can only have 2 columns, latitude and longitude which all of these data sets have. However, the order of the columns matters! In general R will read coordinates as x-coordinates (lonitude) and y-coordinates (latitude), but the data sets are in a latitude then longitude format. Thus, before we can generate our pseudo-absences we need to reverse the order of the columns. 
+```{r, reversing the columns}
+#Reverse the columns
+Dingo_Pres = Dingo_Pres[, c("Long", "Lat")]
+Cat_Pres = Cat_Pres[, c("Long", "Lat")]
+Rabbit_Pres = Rabbit_Pres[, c("Long", "Lat")]
+Fox_Pres = Fox_Pres[, c("Long", "Lat")]
+Wallaby_Pres = Wallaby_Pres[, c("Long", "Lat")]
+Kite_Pres = Kite_Pres[, c("Long", "Lat")]
+
+#Re-check the structure
+str(Dingo_Pres)
+str(Cat_Pres)
+str(Rabbit_Pres)
+str(Fox_Pres)
+str(Wallaby_Pres)
+str(Kite_Pres)
+
+#Re-check the values
+head(Dingo_Pres)
+head(Cat_Pres)
+head(Rabbit_Pres)
+head(Fox_Pres)
+head(Wallaby_Pres)
+head(Kite_Pres)
+```
+
+Everything looks fine but we also cannot have NA values in our data so we need to remove these.
+```{r, removing NA values}
+#Remove the NA values
+Dingo_Pres = Dingo_Pres[!is.na(Dingo_Pres$Long),]
+Cat_Pres = Cat_Pres[!is.na(Cat_Pres$Long), ]
+Rabbit_Pres = Rabbit_Pres[!is.na(Rabbit_Pres$Long), ]
+Fox_Pres = Fox_Pres[!is.na(Fox_Pres$Long), ]
+Wallaby_Pres = Wallaby_Pres[!is.na(Wallaby_Pres$Long), ]
+Kite_Pres = Kite_Pres[!is.na(Kite_Pres$Long), ]
+
+#Check the NAs are all gone
+summary(Dingo_Pres)
+summary(Cat_Pres)
+summary(Rabbit_Pres)
+summary(Fox_Pres)
+summary(Wallaby_Pres)
+summary(Kite_Pres)
+```
+
+## Generating the Pseudo-Absences
+
+I want to generate as many pseudo-absence points as I have presence points. This represents a situation with low data available on population dynamics of the species to infer if a species is likely to be absence more than present and vice versa. To know the number of points to generate we can retrieve the number of rows in each data set. 
+```{r, number of pseudo-absences to generate}
+n_Dingo = nrow(Dingo_Pres)
+n_Cat = nrow(Cat_Pres)
+n_Rabbit = nrow(Rabbit_Pres)
+n_Fox = nrow(Fox_Pres)
+n_Wallaby = nrow(Wallaby_Pres)
+n_Kite = nrow(Kite_Pres)
+```
+
+Now we need to create the extent objects for each species. 
+```{r, creating extent onjects}
+#Dingoes
+Dingo_maxLat = ceiling(max(Dingo_Pres$Lat))
+Dingo_minLat = floor(min(Dingo_Pres$Lat))
+Dingo_maxLong = ceiling(max(Dingo_Pres$Long))
+Dingo_minLong = floor(min(Dingo_Pres$Long))
+Dingo.extent = extent(x = c(Dingo_minLong, Dingo_maxLong, Dingo_minLat, Dingo_maxLat))
+
+#Cats
+Cat_maxLat = ceiling(max(Cat_Pres$Lat))
+Cat_minLat = floor(min(Cat_Pres$Lat))
+Cat_maxLong = ceiling(max(Cat_Pres$Long))
+Cat_minLong = floor(min(Cat_Pres$Long))
+Cat.extent = extent(x = c(Cat_minLong, Cat_maxLong, Cat_minLat, Cat_maxLat))
+
+#Rabbits
+Rabbit_maxLat = ceiling(max(Rabbit_Pres$Lat))
+Rabbit_minLat = floor(min(Rabbit_Pres$Lat))
+Rabbit_maxLong = ceiling(max(Rabbit_Pres$Long))
+Rabbit_minLong = floor(min(Rabbit_Pres$Long))
+Rabbit.extent = extent(x = c(Rabbit_minLong, Rabbit_maxLong, Rabbit_minLat, Rabbit_maxLat))
+
+#Foxes
+Fox_maxLat = ceiling(max(Fox_Pres$Lat))
+Fox_minLat = floor(min(Fox_Pres$Lat))
+Fox_maxLong = ceiling(max(Fox_Pres$Long))
+Fox_minLong = floor(min(Fox_Pres$Long))
+Fox.extent = extent(x = c(Fox_minLong, Fox_maxLong, Fox_minLat, Fox_maxLat))
+
+#Wallaby
+Wallaby_maxLat = ceiling(max(Wallaby_Pres$Lat))
+Wallaby_minLat = floor(min(Wallaby_Pres$Lat))
+Wallaby_maxLong = ceiling(max(Wallaby_Pres$Long))
+Wallaby_minLong = floor(min(Wallaby_Pres$Long))
+Wallaby.extent = extent(x = c(Wallaby_minLong, Wallaby_maxLong, Wallaby_minLat, Wallaby_maxLat))
+
+#Kites
+Kite_maxLat = ceiling(max(Kite_Pres$Lat))
+Kite_minLat = floor(min(Kite_Pres$Lat))
+Kite_maxLong = ceiling(max(Kite_Pres$Long))
+Kite_minLong = floor(min(Kite_Pres$Long))
+Kite.extent = extent(x = c(Kite_minLong, Kite_maxLong, Kite_minLat, Kite_maxLat))
+```
+
+Last step before generating the pseudo-absences is to convert the presence coordinates into spatial data frames that the function *randomPoints()* can use.
+```{r, generating spatial data frames}
+Dingo_Pres_SP = SpatialPointsDataFrame(coords = Dingo_Pres[, 1:2], data = Dingo_Pres,
+                                       proj4string = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+Cat_Pres_SP = SpatialPointsDataFrame(coords = Cat_Pres[, 1:2], data = Cat_Pres,
+                                       proj4string = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+Rabbit_Pres_SP = SpatialPointsDataFrame(coords = Rabbit_Pres[, 1:2], data = Rabbit_Pres,
+                                       proj4string = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+Fox_Pres_SP = SpatialPointsDataFrame(coords = Fox_Pres[, 1:2], data = Fox_Pres,
+                                       proj4string = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+Wallaby_Pres_SP = SpatialPointsDataFrame(coords = Wallaby_Pres[, 1:2], data = Wallaby_Pres,
+                                       proj4string = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+Kite_Pres_SP = SpatialPointsDataFrame(coords = Kite_Pres[, 1:2], data = Kite_Pres,
+                                       proj4string = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+
+```
+
+Now we can finally create our pseudo-absence data!
+```{r, generating pseudo-absences}
+Dingo_Abs = randomPoints(mask = Dingo_Pres_SP, n = n_Dingo, ext = Dingo.extent )
+Cat_Abs = randomPoints(mask = Cat_Pres_SP, n = n_Cat, ext = Cat.extent )
+Rabbit_Abs = randomPoints(mask = Rabbit_Pres_SP, n = n_Rabbit, ext = Rabbit.extent )
+Fox_Abs = randomPoints(mask = Fox_Pres_SP, n = n_Fox, ext = Fox.extent )
+Wallaby_Abs = randomPoints(mask = Wallaby_Pres_SP, n = n_Wallaby, ext = Wallaby.extent )
+Kite_Abs = randomPoints(mask = Kite_Pres_SP, n = n_Kite, ext = Kite.extent )
+```
+
+The warnings are just showing that due to the n_species objects being in a particular format that the function has had to do a change of how it usually executes the arguments. The final data frame objects seem to be in the format that we require so this change has not altered anything in a major way
+
+We now need to format these absence data into data frames before exporting them.
+```{r, making absence data frames}
+Dingo_Abs = as.data.frame(Dingo_Abs)
+Cat_Abs = as.data.frame(Cat_Abs)
+Rabbit_Abs = as.data.frame(Rabbit_Abs)
+Fox_Abs = as.data.frame(Fox_Abs)
+Wallaby_Abs = as.data.frame(Wallaby_Abs)
+Kite_Abs = as.data.frame(Kite_Abs)
+```
+
+Finally we can now export the species absence data frames as .csv object. We will use the *write.csv()* function as this converts the object to be exported into a data frame, then exports the data. An Important notational difference between the *read.table()* and *write.table()* families of functions is that for a *write.table* function we need to use "\\" instead of "/" as to avoid getting the error message "Error: ‘\U’ used without hex digits in character string starting “”C:\U”". 
+```{r, exporting the pseudo-absence data frames}
+dbPath = ("E:\\Masters Project\\BI5002 (Masters Project)")
+write.csv(Dingo_Abs, paste(dbPath, "\\Invasive European Rabbit Data\\Dingo Absences.csv", sep = ''), 
+          row.names = FALSE)
+write.csv(Cat_Abs, paste(dbPath, "\\Invasive European Rabbit Data\\Feral Cat Absences.csv", sep = ''), 
+          row.names = FALSE)
+write.csv(Rabbit_Abs, paste(dbPath, "\\Invasive European Rabbit Data\\Rabbit Absences.csv", sep = ''), 
+          row.names = FALSE)
+write.csv(Fox_Abs, paste(dbPath, "\\Invasive European Rabbit Data\\Red Fox Absences.csv", sep = ''), 
+          row.names = FALSE)
+write.csv(Wallaby_Abs, paste(dbPath, "\\Invasive European Rabbit Data\\Wallaby Sp Absences.csv", sep = ''), 
+          row.names = FALSE)
+write.csv(Kite_Abs, paste(dbPath, "\\Invasive European Rabbit Data\\Whistling Kite Absences.csv", sep = ''), 
+          row.names = FALSE)
+```
+
+We have now finished creating the pseudo-absence data for the animal species and can now clear the global environment and print the session info. 
+```{r, end of session}
+rm(list = ls())
+sessionInfo()
+```

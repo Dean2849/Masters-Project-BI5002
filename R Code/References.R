@@ -1,0 +1,52 @@
+## Date:28/03/2022 ##
+## Title: References ##
+## Description: references for all R packages used in analysis 
+##              plus version of R and RStudio used
+
+## Packages Used ##
+library(raster)
+library(mgcv)
+library(nlme)
+library(lme4)
+library(glmmTMB)
+library(ggplot2)
+library(GGally)
+library(mgcViz)
+library(ggeffects)
+library(patchwork)
+library(cowplot)
+library(plyr)
+library(tidyverse)
+library(effects)
+library(emmeans)
+library(car)
+library(modEvA)
+library(knitr)
+library(kableExtra)
+
+## Citations ##
+citation(package = "raster")
+citation(package = "mgcv")
+citation(package = "nlme")
+citation(package = "lme4")
+citation(package = "glmmTMB")
+citation(package = "ggplot2")
+citation(package = "GGally")
+citation(package = "mgcViz")
+citation(package = "ggeffects")
+citation(package = "patchwork")
+citation(package = "cowplot")
+citation(package = "plyr")
+citation(package = "tidyverse")
+citation(package = "effects")
+citation(package = "emmeans")
+citation(package = "car")
+citation(package = "modEvA")
+citation(package = "knitr")
+citation(package = "kableExtra")
+citation(package = "arm")
+citation(package = "pbkrtest")
+citation(package = "dismo")
+citation(package = "MASS")
+citation(package = "base") #Cites R itself
+RStudio.Version()
